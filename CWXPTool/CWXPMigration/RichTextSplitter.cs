@@ -1,0 +1,92 @@
+﻿using CWXPMigration.Models;
+using HtmlAgilityPack;
+using System.Collections.Generic;
+using System.Linq;
+
+namespace CWXPMigration
+{
+    public class RichTextSplitter
+    {
+        public static List<RichTextSection> SplitByH2(string html)
+        {
+            if (string.IsNullOrWhiteSpace(html))
+                return new List<RichTextSection>();
+
+            var doc = new HtmlDocument();
+            doc.LoadHtml(html);
+
+            var bodyNodes = doc.DocumentNode.SelectNodes("//body/*") ?? doc.DocumentNode.ChildNodes;
+
+            var sections = new List<RichTextSection>();
+            HtmlNode currentHeader = null;
+            var currentContentNodes = new List<HtmlNode>();
+            var tempNodes = new List<HtmlNode>();
+            bool foundFirstH2 = false;
+
+            foreach (var node in bodyNodes)
+            {
+                if (IsH2(node))
+                {
+                    if (!foundFirstH2)
+                    {
+                        // Add content before first <h2>
+                        AddSectionIfReady(sections, null, tempNodes);
+                        foundFirstH2 = true;
+                    }
+                    else
+                    {
+                        // Add previous section
+                        AddSectionIfReady(sections, currentHeader, currentContentNodes);
+                    }
+
+                    currentHeader = node;
+                    currentContentNodes = new List<HtmlNode>();
+                }
+                else
+                {
+                    if (!foundFirstH2)
+                    {
+                        tempNodes.Add(node); // content before first <h2>
+                    }
+                    else if (currentHeader != null)
+                    {
+                        currentContentNodes.Add(node);
+                    }
+                }
+            }
+
+            // Add last section
+            AddSectionIfReady(sections, currentHeader, currentContentNodes);
+
+            // Handle content when no <h2> is found at all
+            if (!foundFirstH2 && tempNodes.Count > 0)
+            {
+                sections.Add(new RichTextSection
+                {
+                    Title = null,
+                    HtmlContent = string.Join("", tempNodes.Select(n => n.OuterHtml))
+                });
+            }
+
+            return sections;
+        }
+
+        private static void AddSectionIfReady(List<RichTextSection> sections, HtmlNode header, List<HtmlNode> content)
+        {
+            if (content.Count == 0 && header == null)
+                return;
+
+            var section = new RichTextSection
+            {
+                Title = header?.InnerText.Trim(),
+                HtmlContent = string.Join("", content.Select(n => n.OuterHtml))
+            };
+            sections.Add(section);
+        }
+
+        private static bool IsH2(HtmlNode node)
+        {
+            return node != null && node.Name.Equals("h2", System.StringComparison.OrdinalIgnoreCase);
+        }
+    }
+}

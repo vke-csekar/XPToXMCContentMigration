@@ -1,0 +1,67 @@
+﻿@model CWXPMigration.Models.ContentMigrationModel
+
+@using (Html.BeginForm("Index", "ContentMigration", FormMethod.Post))
+{
+    <label>Enter Sitecore Item Path:</label>
+    <input type="text" name="itemPath" value="@Model.ItemPath" style="width:400px;" />
+    <button type="submit">Submit</button>
+}
+
+@if (Model.Items != null && Model.Items.Any())
+{
+    foreach (var model in Model.Items)
+    {
+        var path = model.Page;
+        <h2>Page: @path</h2>
+        if (model.Fields.Any())
+        {
+            <h3>Item Fields</h3>
+            <table border="1" cellpadding="5" cellspacing="0">
+                <tr><th>Field Name</th><th>Value</th><th>Type</th></tr>
+                @foreach (var field in model.Fields)
+                {
+                    <tr>
+                        <td>@field.Name</td>
+                        <td>@Html.Raw(field.Value)</td>
+                        <td>@Html.Raw(field.Type)</td>
+                    </tr>
+                }
+            </table>
+        }
+        if (model.Renderings.Any())
+        {
+            <h3>Renderings on Page</h3>
+            <table border="1" cellpadding="5" cellspacing="0">
+                <tr><th>Rendering ID</th><th>Data Source ID</th></tr>
+                @foreach (var r in model.Renderings)
+                {
+                    <tr>
+                        <td>@r.RenderingName</td>
+                        <td>@r.DatasourceID</td>
+                    </tr>
+                }
+            </table>
+        }
+        if (model.DataSources.Any())
+        {
+            <h3>Data Source Items</h3>
+            foreach (var ds in model.DataSources)
+            {
+                <h4>@ds.Path (@ds.ID)</h4>
+                <table border="1" cellpadding="5" cellspacing="0">
+                    <tr><th>Field Name</th><th>Value</th><th>Type</th></tr>
+                    @foreach (var field in ds.Fields)
+                    {
+                        <tr>
+                            <td>@field.Name</td>
+                            <td>@Html.Raw(field.Value)</td>
+                            <td>@Html.Raw(field.Type)</td>
+                        </tr>
+                    }
+                </table>
+                <br />
+            }
+        }
+    }
+
+}

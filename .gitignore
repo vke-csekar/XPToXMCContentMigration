@@ -1,0 +1,18 @@
+﻿################################################################################
+# This .gitignore file was automatically created by Microsoft(R) Visual Studio.
+################################################################################
+
+/.vs
+/CWXPTool/.vs
+/CWXPTool/CWExcelConverter/bin/Debug/net8.0
+/CWXPTool/CWExcelConverter/obj
+/CWXPTool/CWXPMigration/.vs
+/CWXPTool/CWXPMigration/bin/Debug
+/CWXPTool/CWXPMigration/obj/Debug
+/CWXPTool/CWXPMigrationMockTesting/.vs
+/CWXPTool/CWXPMigrationMockTesting/bin/Debug
+/CWXPTool/CWXPMigrationMockTesting/obj/Debug
+/CWXPTool/CWXPTool/.vs
+/CWXPTool/CWXPTool/bin
+/CWXPTool/CWXPTool/obj/Debug
+/CWXPTool/packages
