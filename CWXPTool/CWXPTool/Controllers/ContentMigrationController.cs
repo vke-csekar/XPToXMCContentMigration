@@ -2,6 +2,7 @@
 using CWXPMigration.Models;
 using CWXPMigration.Services;
 using Microsoft.Ajax.Utilities;
+using Microsoft.Extensions.DependencyInjection;
 using Newtonsoft.Json;
 using Sitecore.Data;
 using Sitecore.Data.Fields;
@@ -18,14 +19,14 @@ namespace CWXPTool.Controllers
 {
     public class ContentMigrationController : Controller
     {
-        const string XP_BASE_PAGE_TEMPLATEID = "{8F3DE639-B021-42CE-AE90-0E07BECB6B03}";        
+        const string XP_BASE_PAGE_TEMPLATEID = "{8F3DE639-B021-42CE-AE90-0E07BECB6B03}";
         const string SITECORE_XP_PRFIX = "/sitecore/content/CHW/Home/";
         const string OFFICE_HOURS_FOLDER_TEMPLATEID = "{87409A28-AD55-4E80-B814-DAE11AF579B0}";
         const string PHONE_HOURS_FOLDER_TEMPLATEID = "{BE526692-1363-4CA1-905B-4BDD7E72244E}";
         const string XP_MIGRATION_LOG_JSON_PATH = "F:\\Migration\\CWXPMigrationContent.json";
         const string XP_RTE_RENDERING_NAME = "RichText";
         const string XP_PAGEHEADLINE_RENDERING_NAME = "PageHeadline";
-        const string XP_RTE_PLAIN_RENDERING_NAME = "RichText Plain";        
+        const string XP_RTE_PLAIN_RENDERING_NAME = "RichText Plain";
 
         readonly string[] XP_RENDERING_NAMES = new string[] { "PageHeadline", "RichText", "RichText Plain" };
 
@@ -38,8 +39,14 @@ namespace CWXPTool.Controllers
             "{7A4E0C65-C397-4E65-A941-7CF879C0B727}", "{BB35FDA8-7E1F-48DC-A556-FA8FD89F96C2}", "{CE453EDE-ED09-4928-80B0-143556AA52E8}",
         "{1B371DE2-704C-4D43-A94B-FC04B95DC6B8}" };
 
-        private readonly SitecoreGraphQLClient graphQLClient = new SitecoreGraphQLClient();
-        private readonly SideNavMigrationService sideNavMigrationService = new SideNavMigrationService();
+        public ISitecoreGraphQLClient SitecoreGraphQLClient { get; set; }
+        public ISideNavMigrationService SideNavMigrationService { get;set; }
+
+        public ContentMigrationController()
+        {
+            this.SitecoreGraphQLClient = Sitecore.DependencyInjection.ServiceLocator.ServiceProvider.GetService<ISitecoreGraphQLClient>();
+            this.SideNavMigrationService = Sitecore.DependencyInjection.ServiceLocator.ServiceProvider.GetService<ISideNavMigrationService>();
+        }
 
         public ActionResult Index()
         {
@@ -69,6 +76,13 @@ namespace CWXPTool.Controllers
             return View(model);
         }
 
+        /// <summary>
+        /// Retrieves parent and child pages from Sitecore XP for the specified path.
+        /// For each page, collects common page fields, predefined renderings, and their datasources.
+        /// Consolidates the data into a structured object and saves it as a JSON file (Just logging/troubleshooting).
+        /// </summary>
+        /// <param name="itemPath">The Sitecore path of the parent item to start data retrieval from.</param>
+        /// <returns>A task representing the asynchronous operation.</returns>
         private List<PageDataModel> GetPagesAndRelatedDataFromXP(string itemPath)
         {
             var database = Sitecore.Context.Database;
@@ -89,7 +103,7 @@ namespace CWXPTool.Controllers
                 {
                     var pageData = ExtractPageData(pageItem, database);
                     if (pageData.Renderings.Any() && pageData.DataSources.Any())
-                    {                        
+                    {
                         xpPageDataItems.Add(pageData);
                     }
                 }
@@ -108,13 +122,15 @@ namespace CWXPTool.Controllers
                 pageMappings.RemoveAll(x => string.IsNullOrEmpty(x.CURRENTURL) || string.IsNullOrEmpty(x.NEWURLPATH));
                 pageMappings.ForEach(x =>
                 {
-                    //x.CURRENTURL = NormalizeUrlToSitecorePath(x.CURRENTURL);
-                    //x.NEWURLPATH = RemoveUrlFromSitecorePath(x.NEWURLPATH);
 
-                    // For CURRENTURL (with prefix)
+                    // Handles CURRENTURL (with prefix).
+                    // The CURRENTURL value from Excel contains a full URL; this extracts only the corresponding Sitecore content path.
+                    // Cleans the URL by removing any encoded or unwanted special characters.
                     x.CURRENTURL = GetSitecorePathFromUrl(x.CURRENTURL, SITECORE_XP_PRFIX);
 
-                    // For NEWURLPATH (no prefix)
+                    // Handles NEWURLPATH (with prefix).
+                    // The NEWURLPATH value from Excel contains a partial path of Sitecore item; this appends XMC root paths.
+                    // Cleans the URL by removing any encoded or unwanted special characters.
                     x.NEWURLPATH = GetSitecorePathFromUrl(x.NEWURLPATH, SITECORE_XMC_PREFIX);
                 });
             }
@@ -230,7 +246,7 @@ namespace CWXPTool.Controllers
             int total = pageDataItems.Count;
             int batches = (int)Math.Ceiling(total / (double)batchSize);
 
-            var database = Sitecore.Context.Database;            
+            var database = Sitecore.Context.Database;
 
             var authResponse = await AuthHelper.GetAuthTokenAsync();
 
@@ -251,29 +267,27 @@ namespace CWXPTool.Controllers
                                 mapping.CURRENTURL.Equals(sourcePageItem.Page, StringComparison.OrdinalIgnoreCase));
 
                         if (matchedMapping != null)
-                        {
-                            var pageItem = database.GetItem(sourcePageItem.ItemID);
-                            var localDatasourceItems = pageItem.HasChildren ? pageItem.Axes.GetDescendants() : new Item[] { };
+                        {                            
                             string xmcTemplateId = matchedMapping.PAGETEMPLATEID;
 
                             if (!string.IsNullOrEmpty(matchedMapping.NEWURLPATH))
                             {
                                 string sourcePagePath = sourcePageItem.Page;
                                 string targetItemId = string.Empty;
-                                var targetItem = await graphQLClient.QuerySingleItemAsync(authResponse.AccessToken, matchedMapping.NEWURLPATH);
+                                var targetItem = await SitecoreGraphQLClient.QuerySingleItemAsync(authResponse.AccessToken, matchedMapping.NEWURLPATH);
                                 if (targetItem != null)
                                     targetItemId = targetItem.ItemId;
                                 if (targetItem == null)
                                 {
-                                    await EnsureSitecorePathExistsAsync(matchedMapping.NEWURLPATH, authResponse.AccessToken, graphQLClient, pageMappingItems);
-                                    targetItem = await graphQLClient.QuerySingleItemAsync(authResponse.AccessToken, matchedMapping.NEWURLPATH);
+                                    await EnsureSitecorePathExistsAsync(matchedMapping.NEWURLPATH, authResponse.AccessToken, pageMappingItems);
+                                    targetItem = await SitecoreGraphQLClient.QuerySingleItemAsync(authResponse.AccessToken, matchedMapping.NEWURLPATH);
                                 }
                                 if (targetItem != null)
                                 {
                                     string dataItemId = string.Empty;
                                     string sideNavItemId = string.Empty;
                                     await SyncPageFields(sourcePageItem, matchedMapping, targetItem, authResponse.AccessToken);
-                                    var dataItem = await graphQLClient.QuerySingleItemAsync(authResponse.AccessToken, matchedMapping.NEWURLPATH + "/Data");
+                                    var dataItem = await SitecoreGraphQLClient.QuerySingleItemAsync(authResponse.AccessToken, matchedMapping.NEWURLPATH + "/Data");
                                     if (dataItem == null)
                                         dataItemId = await CreateItem(authResponse.AccessToken, targetItemId, "Data", XMC_DATA_ITEM_TEMPLATEID);
                                     else
@@ -287,24 +301,37 @@ namespace CWXPTool.Controllers
                                         //Page Specific Data Migration
                                         if (XMC_SIDE_NAV_PAGE_TEMPLATES.Contains(xmcTemplateId))
                                         {
-                                            await sideNavMigrationService.ProcessRichTextRenderingsAsync(rteRenderings, sourcePageItem, dataItemId, matchedMapping.NEWURLPATH, authResponse.AccessToken);
+                                            await SideNavMigrationService.ProcessRichTextRenderingsAsync(rteRenderings, sourcePageItem, dataItemId, matchedMapping.NEWURLPATH, authResponse.AccessToken);
                                             sourcePageItem.DataSources.RemoveAll(x => rteRenderings.Any(y => x.ID.Equals(y.DatasourceID, StringComparison.OrdinalIgnoreCase)));
                                         }
 
                                         if (XMC_LOCATION_PAGE_TEMPLATES.Contains(matchedMapping.PAGETEMPLATEID))
                                         {
-                                            //Office Hours
-                                            await CreateOfficeHoursDatasources(localDatasourceItems, authResponse.AccessToken, matchedMapping.NEWURLPATH, dataItemId, OFFICE_HOURS_FOLDER_TEMPLATEID);
-                                            //Phone Hours
-                                            await CreateOfficeHoursDatasources(localDatasourceItems, authResponse.AccessToken, matchedMapping.NEWURLPATH, dataItemId, PHONE_HOURS_FOLDER_TEMPLATEID);
+                                            var pageItem = database.GetItem(sourcePageItem.ItemID);                                            
+
+                                            if (pageItem.HasChildren)
+                                            {
+                                                var localDatasourceItems = pageItem.Axes.GetDescendants()
+                                                .Where(descendant =>
+                                                    descendant.TemplateID.ToString().Equals(OFFICE_HOURS_FOLDER_TEMPLATEID, StringComparison.OrdinalIgnoreCase) ||
+                                                    descendant.Parent?.TemplateID.ToString().Equals(OFFICE_HOURS_FOLDER_TEMPLATEID, StringComparison.OrdinalIgnoreCase) == true ||
+                                                    descendant.TemplateID.ToString().Equals(PHONE_HOURS_FOLDER_TEMPLATEID, StringComparison.OrdinalIgnoreCase) ||
+                                                    descendant.Parent?.TemplateID.ToString().Equals(PHONE_HOURS_FOLDER_TEMPLATEID, StringComparison.OrdinalIgnoreCase) == true
+                                                ).ToArray();
+
+                                                //Office Hours
+                                                await CreateOfficeHoursDatasources(localDatasourceItems, authResponse.AccessToken, matchedMapping.NEWURLPATH, dataItemId, OFFICE_HOURS_FOLDER_TEMPLATEID);
+                                                //Phone Hours
+                                                await CreateOfficeHoursDatasources(localDatasourceItems, authResponse.AccessToken, matchedMapping.NEWURLPATH, dataItemId, PHONE_HOURS_FOLDER_TEMPLATEID);
+                                            }                                            
                                         }
 
                                         await CreateRTEDatasources(sourcePageItem,
-                                            dataItemId, graphQLClient, authResponse.AccessToken);
+                                            dataItemId, authResponse.AccessToken);
 
                                         //Rich Text is already processed.                                                                                        
                                         await CreatePageHeadlineDatasources(sourcePageItem, pageHeadlineRenderings,
-                                            dataItemId, matchedMapping, graphQLClient, authResponse.AccessToken);
+                                            dataItemId, matchedMapping, authResponse.AccessToken);
                                     }
                                 }
                             }
@@ -319,12 +346,12 @@ namespace CWXPTool.Controllers
         }
 
         private async Task CreateOfficeHoursDatasources(Item[] items, string accessToken, string newUrlPath, string dataItemId, string templateId)
-        {            
+        {
             var officeHoursFolderItem = items.FirstOrDefault(x => x.TemplateID == ID.Parse(templateId));
             if (officeHoursFolderItem != null)
             {
                 var createdItemId = string.Empty;
-                var xmcOfficeHoursFolder = await graphQLClient.QuerySingleItemAsync(accessToken, newUrlPath + $"/Data/{officeHoursFolderItem.Name}");
+                var xmcOfficeHoursFolder = await SitecoreGraphQLClient.QuerySingleItemAsync(accessToken, newUrlPath + $"/Data/{officeHoursFolderItem.Name}");
                 if (xmcOfficeHoursFolder == null)
                 {
                     createdItemId = await CreateItem(accessToken,
@@ -343,7 +370,7 @@ namespace CWXPTool.Controllers
                         {
                             foreach (var item in officeHoursItems)
                             {
-                                var xmcOfficeHours = await graphQLClient.QuerySingleItemAsync(accessToken, newUrlPath + $"/Data/{item.Name}");
+                                var xmcOfficeHours = await SitecoreGraphQLClient.QuerySingleItemAsync(accessToken, newUrlPath + $"/Data/{item.Name}");
                                 if (xmcOfficeHours != null)
                                     continue;
                                 var fields = new List<SitecoreFieldInput>();
@@ -360,14 +387,13 @@ namespace CWXPTool.Controllers
                             }
                         }
                     }
-                }                
-            }            
+                }
+            }
         }
 
         private async Task CreateRTEDatasources(
             PageDataModel sourcePageItem,
             string localDataItemId,
-            SitecoreGraphQLClient graphQLClient,
             string accessToken)
         {
             if (sourcePageItem.DataSources != null && sourcePageItem.DataSources.Any())
@@ -390,7 +416,7 @@ namespace CWXPTool.Controllers
                     }
                 }
                 if (items.Any())
-                    await graphQLClient.CreateBulkItemsBatchedAsync(items, accessToken, 10);
+                    await this.SitecoreGraphQLClient.CreateBulkItemsBatchedAsync(items, accessToken, 10);
             }
         }
 
@@ -399,7 +425,6 @@ namespace CWXPTool.Controllers
             IEnumerable<RenderingInfo> pageHeadlineRenderings,
             string localDataItemId,
             PageMapping matchedMapping,
-            SitecoreGraphQLClient graphQLClient,
             string accessToken)
         {
             if (pageHeadlineRenderings != null && pageHeadlineRenderings.Any())
@@ -423,7 +448,7 @@ namespace CWXPTool.Controllers
                                 if (headlineField != null && !string.IsNullOrEmpty(headlineField.Value))
                                 {
                                     var path = $"{matchedMapping.NEWURLPATH}/Data/{datasource.Name}";
-                                    var existingItem = await graphQLClient.QuerySingleItemAsync(accessToken, path);
+                                    var existingItem = await this.SitecoreGraphQLClient.QuerySingleItemAsync(accessToken, path);
                                     if (existingItem == null)
                                     {
                                         var inputItem = GetSitecoreCreateItemInput(datasource.Name,
@@ -434,7 +459,7 @@ namespace CWXPTool.Controllers
                             }
                         }
                         if (items.Any())
-                            await graphQLClient.CreateBulkItemsBatchedAsync(items, accessToken, 10);
+                            await this.SitecoreGraphQLClient.CreateBulkItemsBatchedAsync(items, accessToken, 10);
                     }
                 }
             }
@@ -528,13 +553,13 @@ namespace CWXPTool.Controllers
             {
                 createDataItemInput.Fields = fields;
             }
-            var createdItem = await graphQLClient.CreateBulkItemsBatchedAsync(new List<SitecoreCreateItemInput>() { createDataItemInput }, accessToken, 10);
+            var createdItem = await SitecoreGraphQLClient.CreateBulkItemsBatchedAsync(new List<SitecoreCreateItemInput>() { createDataItemInput }, accessToken, 10);
             if (createdItem != null)
                 createdItemId = createdItem.FirstOrDefault().ItemId;
             return createdItemId;
         }
 
-        public static List<PageMapping> SortPages(List<PageMapping> pages)
+        private static List<PageMapping> SortPages(List<PageMapping> pages)
         {
             // Sort based on itemPath segments
             pages.Sort((a, b) =>
@@ -597,7 +622,7 @@ namespace CWXPTool.Controllers
                     Fields = fields,
                     Language = "en"
                 };
-                return await graphQLClient.UpdateBulkItemsBatchedAsync(new List<SitecoreUpdateItemInput>() { updateItemInput }, accessToken, 10);
+                return await SitecoreGraphQLClient.UpdateBulkItemsBatchedAsync(new List<SitecoreUpdateItemInput>() { updateItemInput }, accessToken, 10);
             }
 
             return false;
@@ -676,10 +701,9 @@ namespace CWXPTool.Controllers
             return fields;
         }
 
-        public async Task EnsureSitecorePathExistsAsync(
+        private async Task EnsureSitecorePathExistsAsync(
     string targetPath,
     string accessToken,
-    SitecoreGraphQLClient graphQLClient,
     List<PageMapping> pageMappingItems)
         {
             // Find the nearest existing parent
@@ -693,7 +717,7 @@ namespace CWXPTool.Controllers
 
                 if (!string.IsNullOrEmpty(parentPath))
                 {
-                    var parentItem = await graphQLClient.QuerySingleItemAsync(accessToken, parentPath);
+                    var parentItem = await this.SitecoreGraphQLClient.QuerySingleItemAsync(accessToken, parentPath);
 
                     if (parentItem != null)
                     {
@@ -732,7 +756,7 @@ namespace CWXPTool.Controllers
                     x.NEWURLPATH.Equals(segmentPath, StringComparison.OrdinalIgnoreCase));
 
                 // Check if segment already exists
-                var existingSegmentItem = await graphQLClient.QuerySingleItemAsync(accessToken, segmentPath);
+                var existingSegmentItem = await this.SitecoreGraphQLClient.QuerySingleItemAsync(accessToken, segmentPath);
 
                 if (segmentMapping != null && existingSegmentItem == null)
                 {
@@ -745,7 +769,7 @@ namespace CWXPTool.Controllers
                         Parent = parentItemId
                     };
 
-                    var createdItems = await graphQLClient.CreateBulkItemsBatchedAsync(
+                    var createdItems = await this.SitecoreGraphQLClient.CreateBulkItemsBatchedAsync(
                         new List<SitecoreCreateItemInput> { createItemInput },
                         accessToken,
                         10

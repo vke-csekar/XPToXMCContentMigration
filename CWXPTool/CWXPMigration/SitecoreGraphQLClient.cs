@@ -11,11 +11,31 @@ using System.Threading.Tasks;
 
 namespace CWXPMigration
 {
-    public class SitecoreGraphQLClient
+    public interface ISitecoreGraphQLClient
+    {
+        Task<List<CreatedItem>> CreateBulkItemsBatchedAsync(List<SitecoreCreateItemInput> items, string accessToken, int batchSize = 50);
+
+        Task<bool> UpdateBulkItemsBatchedAsync(
+            List<SitecoreUpdateItemInput> items,
+            string accessToken,
+            int batchSize = 50);
+
+        Task<SitecoreItem> QuerySingleItemAsync(string accessToken, string path);
+
+        Task<QueryItemsResult<T>> QueryItemsAsync<T>(
+            string accessToken,
+            string parentPath,
+            List<string> fieldNames,
+            Func<JObject, T> itemMapper,
+            List<string> excludeTemplateIDs = null,
+            List<string> includeTemplateIDs = null);
+    }
+
+    public class SitecoreGraphQLClient : ISitecoreGraphQLClient
     {
         private readonly string _authoringUrl;
         private readonly HttpClient _httpClient;
-        private readonly string _endpoint;        
+        private readonly string _endpoint;
 
         public SitecoreGraphQLClient()
         {
@@ -76,9 +96,9 @@ namespace CWXPMigration
         }
 
         public async Task<bool> UpdateBulkItemsBatchedAsync(
-    List<SitecoreUpdateItemInput> items,
-    string accessToken,
-    int batchSize = 50)
+            List<SitecoreUpdateItemInput> items,
+            string accessToken,
+            int batchSize = 50)
         {
             var updatedItems = new List<SitecoreUpdatedItem>();
 
@@ -196,12 +216,12 @@ namespace CWXPMigration
         }
 
         public async Task<QueryItemsResult<T>> QueryItemsAsync<T>(
-    string accessToken,
-    string parentPath,
-    List<string> fieldNames,
-    Func<JObject, T> itemMapper,
-    List<string> excludeTemplateIDs = null,
-    List<string> includeTemplateIDs = null)
+            string accessToken,
+            string parentPath,
+            List<string> fieldNames,
+            Func<JObject, T> itemMapper,
+            List<string> excludeTemplateIDs = null,
+            List<string> includeTemplateIDs = null)
         {
             var allItems = new List<T>();
             bool hasNextPage = true;

@@ -3,7 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 
 namespace CWXPMigration
-{
+{    
     public static class SitecoreMutationBuilder
     {
         public static GraphQLQuery CreateBulkItems(List<SitecoreCreateItemInput> inputs)
