@@ -1,4 +1,5 @@
-﻿using System.Collections.Generic;
+﻿using Sitecore.Data;
+using System.Collections.Generic;
 
 namespace CWXPMigration.Models
 {
@@ -38,6 +39,7 @@ namespace CWXPMigration.Models
 
     public class PageDataModel
     {
+        public ID ItemID { get; set; }
         public string Page { get; set; }
         public List<XPField> Fields { get; set; } = new List<XPField>();
         public List<RenderingInfo> Renderings { get; set; } = new List<RenderingInfo>();
