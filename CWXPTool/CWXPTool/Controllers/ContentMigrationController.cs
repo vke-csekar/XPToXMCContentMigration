@@ -8,8 +8,10 @@ using Sitecore.Data;
 using Sitecore.Data.Fields;
 using Sitecore.Data.Items;
 using Sitecore.Layouts;
+using Sitecore.StringExtensions;
 using System;
 using System.Collections.Generic;
+using System.Data;
 using System.Linq;
 using System.Threading.Tasks;
 using System.Web.Mvc;
@@ -26,26 +28,39 @@ namespace CWXPTool.Controllers
         const string XP_MIGRATION_LOG_JSON_PATH = "F:\\Migration\\CWXPMigrationContent.json";
         const string XP_RTE_RENDERING_NAME = "RichText";
         const string XP_PAGEHEADLINE_RENDERING_NAME = "PageHeadline";
+        const string XP_HEADLINE_RENDERING_NAME = "Headline";
         const string XP_RTE_PLAIN_RENDERING_NAME = "RichText Plain";
+        const string XP_Publication_Footer_RENDERING_NAME = "Publication Footer";
+        const string XP_VideoMainBody_RENDERING_NAME = "Video Main Body";
 
-        readonly string[] XP_RENDERING_NAMES = new string[] { "PageHeadline", "RichText", "RichText Plain" };
+        readonly string[] XP_RENDERING_NAMES = new string[] { "PageHeadline", "Headline", "RichText", "RichText Plain", "Publication Footer",
+        "Video Main Body"};
 
         const string SITECORE_XMC_PREFIX = "/sitecore/content/CW/childrens/Home/";
         const string XMC_DATA_ITEM_TEMPLATEID = "{1C82E550-EBCD-4E5D-8ABD-D50D0809541E}";
         const string XMC_RTE_ITEM_TEMPLATEID = "{0EFFE34A-636F-4288-BA3B-0AF056AAD42B}";
+        const string XMC_TEXT_MEDIA_TEMPLATEID = "{0EE2E1D9-DDD5-471A-9BE3-0F39AD0FC4E2}";
 
         readonly string[] XMC_SIDE_NAV_PAGE_TEMPLATES = new string[] { "{4D49E913-37B3-4946-9372-7BB0DCA63BC9}" };
         readonly string[] XMC_LOCATION_PAGE_TEMPLATES = new string[] { "{6274DC7B-91E7-4243-B5DA-96604F2EBBEA}",
             "{7A4E0C65-C397-4E65-A941-7CF879C0B727}", "{BB35FDA8-7E1F-48DC-A556-FA8FD89F96C2}", "{CE453EDE-ED09-4928-80B0-143556AA52E8}",
         "{1B371DE2-704C-4D43-A94B-FC04B95DC6B8}" };
+        readonly string XMC_TEACHING_SHEETS_TEMPLATE = "{39EBED3F-5965-4A68-9A4C-45E7D29043C8}";
+        readonly string XMC_GeneralT2_TEMPLATE = "{2400C94A-5BB1-4F69-85CC-3AD185DC4BCA}";
+        readonly string XMC_ConditionTreatment_TEMPLATE = "{4D49E913-37B3-4946-9372-7BB0DCA63BC9}";
 
         public ISitecoreGraphQLClient SitecoreGraphQLClient { get; set; }
-        public ISideNavMigrationService SideNavMigrationService { get;set; }
+        public ISideNavMigrationService SideNavMigrationService { get; set; }
+        public ITeachingSheetMigrationService TeachingSheetMigrationService { get; set; }
+
+        string _environment = string.Empty;
+        string _accessToken = string.Empty;
 
         public ContentMigrationController()
         {
             this.SitecoreGraphQLClient = Sitecore.DependencyInjection.ServiceLocator.ServiceProvider.GetService<ISitecoreGraphQLClient>();
             this.SideNavMigrationService = Sitecore.DependencyInjection.ServiceLocator.ServiceProvider.GetService<ISideNavMigrationService>();
+            this.TeachingSheetMigrationService = Sitecore.DependencyInjection.ServiceLocator.ServiceProvider.GetService<ITeachingSheetMigrationService>();
         }
 
         public ActionResult Index()
@@ -54,9 +69,16 @@ namespace CWXPTool.Controllers
         }
 
         [HttpPost]
-        public async Task<ActionResult> Index(string itemPath = null)
+        public async Task<ActionResult> Index(string itemPath = null, string environment = "DEV")
         {
-            var model = new ContentMigrationModel();
+            var model = new ContentMigrationModel
+            {
+                ItemPath = itemPath,
+                Environment = environment
+            };
+
+            _environment = environment;
+
             List<PageDataModel> xpPageDataItems = new List<PageDataModel>();
 
             if (!string.IsNullOrEmpty(itemPath))
@@ -76,6 +98,7 @@ namespace CWXPTool.Controllers
             return View(model);
         }
 
+
         /// <summary>
         /// Retrieves parent and child pages from Sitecore XP for the specified path.
         /// For each page, collects common page fields, predefined renderings, and their datasources.
@@ -86,7 +109,7 @@ namespace CWXPTool.Controllers
         private List<PageDataModel> GetPagesAndRelatedDataFromXP(string itemPath)
         {
             var database = Sitecore.Context.Database;
-            var rootItem = database.GetItem(itemPath);
+            var rootItem = IsGuidInput(itemPath) ? database.GetItem(ID.Parse(itemPath)) : database.GetItem(itemPath);
 
             List<PageDataModel> xpPageDataItems = new List<PageDataModel>();
 
@@ -178,36 +201,23 @@ namespace CWXPTool.Controllers
                 }
             }
 
-            var mergedLayoutXml = GetMergedLayoutXml(pageItem);
             var uniqueDataSourceIds = new HashSet<string>();
 
-            if (!string.IsNullOrEmpty(mergedLayoutXml))
+            var renderingInfos = GetRenderingsForCurrentDevice(pageItem);
+
+            if (renderingInfos != null && renderingInfos.Any())
             {
-                var layoutDefinition = LayoutDefinition.Parse(mergedLayoutXml);
-                foreach (DeviceDefinition device in layoutDefinition.Devices)
+                foreach (var renderingInfo in renderingInfos)
                 {
-                    foreach (RenderingDefinition rendering in device.Renderings)
+                    if (renderingInfo != null && XP_RENDERING_NAMES.Contains(renderingInfo.RenderingName))
                     {
-                        var renderingId = GetRenderingIdFromXml(rendering);
-                        var dataSourceId = GetDataSourceIdFromXml(rendering);
-
-                        if (string.IsNullOrEmpty(renderingId) || string.IsNullOrEmpty(dataSourceId))
-                            continue;
-
-                        var renderingItem = database.GetItem(renderingId);
-                        if (renderingItem != null && XP_RENDERING_NAMES.Contains(renderingItem.Name))
-                        {
-                            uniqueDataSourceIds.Add(dataSourceId);
-
-                            pageModel.Renderings.Add(new RenderingInfo
-                            {
-                                RenderingName = renderingItem.Name ?? "(unknown)",
-                                DatasourceID = dataSourceId ?? "(none)"
-                            });
-                        }
+                        uniqueDataSourceIds.Add(renderingInfo.DatasourceID);
+                        pageModel.Renderings.Add(renderingInfo);
                     }
                 }
             }
+
+            Sitecore.Diagnostics.Log.Info(JsonConvert.SerializeObject(renderingInfos), this);
 
             foreach (var dataSourceId in uniqueDataSourceIds)
             {
@@ -248,10 +258,11 @@ namespace CWXPTool.Controllers
 
             var database = Sitecore.Context.Database;
 
-            var authResponse = await AuthHelper.GetAuthTokenAsync();
+            var authResponse = await AuthHelper.GetAuthTokenAsync(_environment);
 
             if (authResponse != null && !string.IsNullOrEmpty(authResponse.AccessToken))
             {
+                _accessToken = authResponse.AccessToken;
                 pageMappingItems = SortPages(pageMappingItems);
                 for (int i = 0; i < batches; i++)
                 {
@@ -267,47 +278,67 @@ namespace CWXPTool.Controllers
                                 mapping.CURRENTURL.Equals(sourcePageItem.Page, StringComparison.OrdinalIgnoreCase));
 
                         if (matchedMapping != null)
-                        {                            
+                        {
                             string xmcTemplateId = matchedMapping.PAGETEMPLATEID;
-
                             if (!string.IsNullOrEmpty(matchedMapping.NEWURLPATH))
                             {
                                 string sourcePagePath = sourcePageItem.Page;
                                 string targetItemId = string.Empty;
-                                var targetItem = await SitecoreGraphQLClient.QuerySingleItemAsync(authResponse.AccessToken, matchedMapping.NEWURLPATH);
+                                var targetItem = await SitecoreGraphQLClient.QuerySingleItemAsync(_environment, _accessToken, matchedMapping.NEWURLPATH);
                                 if (targetItem != null)
+                                {
                                     targetItemId = targetItem.ItemId;
+                                }
                                 if (targetItem == null)
                                 {
-                                    await EnsureSitecorePathExistsAsync(matchedMapping.NEWURLPATH, authResponse.AccessToken, pageMappingItems);
-                                    targetItem = await SitecoreGraphQLClient.QuerySingleItemAsync(authResponse.AccessToken, matchedMapping.NEWURLPATH);
+                                    await EnsureSitecorePathExistsAsync(matchedMapping.NEWURLPATH, pageMappingItems);
+                                    targetItem = await SitecoreGraphQLClient.QuerySingleItemAsync(_environment, _accessToken, matchedMapping.NEWURLPATH);
+                                    if (targetItem != null)
+                                        Sitecore.Diagnostics.Log.Info(JsonConvert.SerializeObject(targetItem), this);
                                 }
                                 if (targetItem != null)
                                 {
                                     string dataItemId = string.Empty;
                                     string sideNavItemId = string.Empty;
-                                    await SyncPageFields(sourcePageItem, matchedMapping, targetItem, authResponse.AccessToken);
-                                    var dataItem = await SitecoreGraphQLClient.QuerySingleItemAsync(authResponse.AccessToken, matchedMapping.NEWURLPATH + "/Data");
+
+                                    var headlineRenderings = new List<RenderingInfo>();
+                                    var headlineRenderings1 = sourcePageItem.Renderings.Where(r => r.RenderingName.Contains(XP_HEADLINE_RENDERING_NAME)).ToList();
+                                    if (headlineRenderings1 != null && headlineRenderings1.Any())
+                                        headlineRenderings.AddRange(headlineRenderings1);
+                                    var headlineRenderings2 = sourcePageItem.Renderings.Where(r => r.RenderingName.Contains(XP_PAGEHEADLINE_RENDERING_NAME));
+                                    if (headlineRenderings2 != null && headlineRenderings2.Any())
+                                        headlineRenderings.AddRange(headlineRenderings2);
+
+                                    await SyncPageFields(sourcePageItem, matchedMapping, targetItem, headlineRenderings);
+
+                                    var dataItem = await SitecoreGraphQLClient.QuerySingleItemAsync(_environment, _accessToken, matchedMapping.NEWURLPATH + "/Data");
                                     if (dataItem == null)
-                                        dataItemId = await CreateItem(authResponse.AccessToken, targetItemId, "Data", XMC_DATA_ITEM_TEMPLATEID);
+                                        dataItemId = await CreateItem(targetItemId, "Data", XMC_DATA_ITEM_TEMPLATEID);
                                     else
                                         dataItemId = dataItem.ItemId;
                                     if (!string.IsNullOrEmpty(dataItemId))
                                     {
                                         var rteRenderings = sourcePageItem.Renderings.Where(r => r.RenderingName.Contains(XP_RTE_RENDERING_NAME));
-                                        var pageHeadlineRenderings = sourcePageItem.Renderings.Where(r => r.RenderingName.Contains(XP_PAGEHEADLINE_RENDERING_NAME));
+
                                         var rtePlainRenderings = sourcePageItem.Renderings.Where(r => r.RenderingName.Contains(XP_RTE_PLAIN_RENDERING_NAME));
 
                                         //Page Specific Data Migration
                                         if (XMC_SIDE_NAV_PAGE_TEMPLATES.Contains(xmcTemplateId))
                                         {
-                                            await SideNavMigrationService.ProcessRichTextRenderingsAsync(rteRenderings, sourcePageItem, dataItemId, matchedMapping.NEWURLPATH, authResponse.AccessToken);
+                                            await SideNavMigrationService.ProcessAsync(rteRenderings, sourcePageItem, dataItemId, matchedMapping.NEWURLPATH, _environment, _accessToken);
+                                            sourcePageItem.DataSources.RemoveAll(x => rteRenderings.Any(y => x.ID.Equals(y.DatasourceID, StringComparison.OrdinalIgnoreCase)));
+                                        }
+
+                                        if (xmcTemplateId.Equals(XMC_TEACHING_SHEETS_TEMPLATE))
+                                        {
+                                            var publicationInfoRendering = sourcePageItem.Renderings.FirstOrDefault(x => x.RenderingName.Contains(XP_Publication_Footer_RENDERING_NAME));
+                                            await TeachingSheetMigrationService.ProcessAsync(rteRenderings, publicationInfoRendering, sourcePageItem, dataItemId, matchedMapping.NEWURLPATH, _environment, _accessToken);
                                             sourcePageItem.DataSources.RemoveAll(x => rteRenderings.Any(y => x.ID.Equals(y.DatasourceID, StringComparison.OrdinalIgnoreCase)));
                                         }
 
                                         if (XMC_LOCATION_PAGE_TEMPLATES.Contains(matchedMapping.PAGETEMPLATEID))
                                         {
-                                            var pageItem = database.GetItem(sourcePageItem.ItemID);                                            
+                                            var pageItem = database.GetItem(sourcePageItem.ItemID);
 
                                             if (pageItem.HasChildren)
                                             {
@@ -320,18 +351,29 @@ namespace CWXPTool.Controllers
                                                 ).ToArray();
 
                                                 //Office Hours
-                                                await CreateOfficeHoursDatasources(localDatasourceItems, authResponse.AccessToken, matchedMapping.NEWURLPATH, dataItemId, OFFICE_HOURS_FOLDER_TEMPLATEID);
+                                                await CreateOfficeHoursDatasources(localDatasourceItems, matchedMapping.NEWURLPATH, dataItemId, OFFICE_HOURS_FOLDER_TEMPLATEID);
                                                 //Phone Hours
-                                                await CreateOfficeHoursDatasources(localDatasourceItems, authResponse.AccessToken, matchedMapping.NEWURLPATH, dataItemId, PHONE_HOURS_FOLDER_TEMPLATEID);
-                                            }                                            
+                                                await CreateOfficeHoursDatasources(localDatasourceItems, matchedMapping.NEWURLPATH, dataItemId, PHONE_HOURS_FOLDER_TEMPLATEID);
+                                            }
                                         }
 
-                                        await CreateRTEDatasources(sourcePageItem,
-                                            dataItemId, authResponse.AccessToken);
+                                        var videMainBodyRenderings = sourcePageItem.Renderings.Where(r => r.RenderingName.Contains(XP_VideoMainBody_RENDERING_NAME)).ToList();
+                                        if(videMainBodyRenderings != null && videMainBodyRenderings.Any())
+                                        {
+                                            videMainBodyRenderings.RemoveAll(x => string.IsNullOrEmpty(x.DatasourceID));
+                                            if(videMainBodyRenderings != null && videMainBodyRenderings.Any())
+                                            {
+                                                var datasourceIds = videMainBodyRenderings.Select(x => x.DatasourceID).ToList();
+                                                await CreateTextMediaDatasources(datasourceIds, sourcePageItem, matchedMapping, dataItemId);
+                                                sourcePageItem.DataSources.RemoveAll(x => datasourceIds.Any(id => id.Equals(x.ID, StringComparison.OrdinalIgnoreCase)));                                                
+                                            }                                            
+                                        }                                        
 
-                                        //Rich Text is already processed.                                                                                        
-                                        await CreatePageHeadlineDatasources(sourcePageItem, pageHeadlineRenderings,
-                                            dataItemId, matchedMapping, authResponse.AccessToken);
+                                        await CreatePageHeadlineDatasources(sourcePageItem, headlineRenderings,
+                                            dataItemId, matchedMapping);
+
+                                        await CreateRTEDatasources(sourcePageItem, matchedMapping,
+                                            dataItemId);                                         
                                     }
                                 }
                             }
@@ -345,17 +387,16 @@ namespace CWXPTool.Controllers
             return true;
         }
 
-        private async Task CreateOfficeHoursDatasources(Item[] items, string accessToken, string newUrlPath, string dataItemId, string templateId)
+        private async Task CreateOfficeHoursDatasources(Item[] items, string newUrlPath, string dataItemId, string templateId)
         {
             var officeHoursFolderItem = items.FirstOrDefault(x => x.TemplateID == ID.Parse(templateId));
             if (officeHoursFolderItem != null)
             {
                 var createdItemId = string.Empty;
-                var xmcOfficeHoursFolder = await SitecoreGraphQLClient.QuerySingleItemAsync(accessToken, newUrlPath + $"/Data/{officeHoursFolderItem.Name}");
+                var xmcOfficeHoursFolder = await SitecoreGraphQLClient.QuerySingleItemAsync(_environment, _accessToken, newUrlPath + $"/Data/{officeHoursFolderItem.Name}");
                 if (xmcOfficeHoursFolder == null)
                 {
-                    createdItemId = await CreateItem(accessToken,
-                    dataItemId, officeHoursFolderItem.Name, officeHoursFolderItem.TemplateID.ToString());
+                    createdItemId = await CreateItem(dataItemId, officeHoursFolderItem.Name, officeHoursFolderItem.TemplateID.ToString());
                 }
                 else
                     createdItemId = xmcOfficeHoursFolder.ItemId;
@@ -370,7 +411,7 @@ namespace CWXPTool.Controllers
                         {
                             foreach (var item in officeHoursItems)
                             {
-                                var xmcOfficeHours = await SitecoreGraphQLClient.QuerySingleItemAsync(accessToken, newUrlPath + $"/Data/{item.Name}");
+                                var xmcOfficeHours = await SitecoreGraphQLClient.QuerySingleItemAsync(_environment, _accessToken, newUrlPath + $"/Data/{item.Name}");
                                 if (xmcOfficeHours != null)
                                     continue;
                                 var fields = new List<SitecoreFieldInput>();
@@ -383,7 +424,12 @@ namespace CWXPTool.Controllers
                                 var close = GetSitecoreFieldInput(item, "Close", "close");
                                 if (close != null)
                                     fields.Add(close);
-                                await CreateItem(accessToken, createdItemId, item.Name, item.TemplateID.ToString(), fields);
+                                var path = $"{newUrlPath}/Data/{officeHoursFolderItem.Name}/{item.Name}";
+                                var existingItem = await this.SitecoreGraphQLClient.QuerySingleItemAsync(_environment, _accessToken, path);
+                                if (existingItem == null)
+                                {
+                                    await CreateItem(createdItemId, item.Name, item.TemplateID.ToString(), fields);
+                                }
                             }
                         }
                     }
@@ -393,8 +439,8 @@ namespace CWXPTool.Controllers
 
         private async Task CreateRTEDatasources(
             PageDataModel sourcePageItem,
-            string localDataItemId,
-            string accessToken)
+            PageMapping pageMapping,
+            string localDataItemId)
         {
             if (sourcePageItem.DataSources != null && sourcePageItem.DataSources.Any())
             {
@@ -409,27 +455,86 @@ namespace CWXPTool.Controllers
                         foreach (var rteField in rteFields)
                         {
                             var itemName = rteFields.Count() > 1 ? $"{datasource.Name}-{itemCounter}" : datasource.Name;
-                            var inputItem = GetSitecoreCreateItemInput(itemName,
+                            var path = $"{pageMapping.NEWURLPATH}/Data/{itemName}";
+                            var existingItem = await this.SitecoreGraphQLClient.QuerySingleItemAsync(_environment, _accessToken, path);
+                            if (existingItem == null)
+                            {
+                                var inputItem = XMCItemUtility.GetSitecoreCreateItemInput(itemName,
                                         XMC_RTE_ITEM_TEMPLATEID, localDataItemId, "text", rteField.Value);
-                            items.Add(inputItem);
+                                items.Add(inputItem);
+                            }
                         }
                     }
                 }
                 if (items.Any())
-                    await this.SitecoreGraphQLClient.CreateBulkItemsBatchedAsync(items, accessToken, 10);
+                    await this.SitecoreGraphQLClient.CreateBulkItemsBatchedAsync(items, _environment, _accessToken, 10);
             }
         }
 
-        private async Task CreatePageHeadlineDatasources(
+        private async Task CreateTextMediaDatasources(
+            List<string> datasourceIds,
             PageDataModel sourcePageItem,
-            IEnumerable<RenderingInfo> pageHeadlineRenderings,
-            string localDataItemId,
-            PageMapping matchedMapping,
-            string accessToken)
+            PageMapping pageMapping,
+            string localDataItemId)
         {
-            if (pageHeadlineRenderings != null && pageHeadlineRenderings.Any())
+            var datasources = sourcePageItem.DataSources
+                    .Where(x => datasourceIds.Any(id => id.Equals(x.ID, StringComparison.OrdinalIgnoreCase)))
+                    .DistinctBy(x => x.ID).ToList();
+            List<SitecoreCreateItemInput> items = new List<SitecoreCreateItemInput>();            
+            foreach (var datasource in datasources)
             {
-                var pageHeadlineRenderingsDatasourceIds = pageHeadlineRenderings.Select(x => x.DatasourceID).ToList();
+                var fields = new List<SitecoreFieldInput>();
+                var title = XMCItemUtility.GetSitecoreFieldInput(datasource, "Title", "title");
+                if (title != null)
+                    fields.Add(title);
+                
+                var richTextAbove = datasource.Fields.FirstOrDefault(x => x.Name == "RichTextAbove" && !string.IsNullOrEmpty(x.Value))?.Value ?? string.Empty;
+                var richTextBelow = datasource.Fields.FirstOrDefault(x => x.Name == "RichTextBelow" && !string.IsNullOrEmpty(x.Value))?.Value ?? string.Empty;
+
+                if (!string.IsNullOrEmpty(richTextBelow))
+                {
+                    var field = new SitecoreFieldInput()
+                    {
+                        Name = "description",
+                        Value = richTextBelow,
+                    };
+                    fields.Add(field);
+                }                
+
+                var videoID = XMCItemUtility.GetSitecoreFieldInput(datasource, "VideoId", "videoID");
+                if (videoID != null)
+                    fields.Add(videoID);
+                var image = XMCItemUtility.GetSitecoreFieldInput(datasource, "Thumbnail", "image");
+                if (image != null)
+                    fields.Add(image);
+                var path = $"{pageMapping.NEWURLPATH}/Data/{datasource.Name}";
+                var existingItem = await this.SitecoreGraphQLClient.QuerySingleItemAsync(_environment, _accessToken, path);
+                if (existingItem == null)
+                    await CreateItem(localDataItemId, datasource.Name, XMC_TEXT_MEDIA_TEMPLATEID, fields);
+
+                if(!string.IsNullOrEmpty(richTextAbove))
+                {
+                    var field = new SitecoreFieldInput()
+                    {
+                        Name = "text",
+                        Value = richTextAbove,
+                    };
+                    string itemName = PathFormatter.FormatItemName($"{datasource.Name} top");
+                    path = $"{pageMapping.NEWURLPATH}/Data/{itemName}";
+                    existingItem = await this.SitecoreGraphQLClient.QuerySingleItemAsync(_environment, _accessToken, path);
+                    if (existingItem == null)
+                        await CreateItem(localDataItemId, itemName, XMC_RTE_ITEM_TEMPLATEID, new List<SitecoreFieldInput>() { field });
+                }
+            }
+        }
+
+        private string GetPageHeadline(
+            PageDataModel sourcePageItem,
+            List<RenderingInfo> headlineRenderings)
+        {
+            if (headlineRenderings != null && headlineRenderings.Any())
+            {
+                var pageHeadlineRenderingsDatasourceIds = headlineRenderings.Select(x => x.DatasourceID).ToList();
                 if (pageHeadlineRenderingsDatasourceIds != null && pageHeadlineRenderingsDatasourceIds.Any())
                 {
                     var datasources = sourcePageItem.DataSources
@@ -447,101 +552,126 @@ namespace CWXPTool.Controllers
                                 var headlineField = datasource.Fields.FirstOrDefault(x => x.Name.Equals("Headline"));
                                 if (headlineField != null && !string.IsNullOrEmpty(headlineField.Value))
                                 {
+                                    return headlineField.Value;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            return string.Empty;
+        }
+
+        private async Task CreatePageHeadlineDatasources(
+            PageDataModel sourcePageItem,
+            IEnumerable<RenderingInfo> pageHeadlineRenderings,
+            string localDataItemId,
+            PageMapping matchedMapping)
+        {
+            if (pageHeadlineRenderings != null && pageHeadlineRenderings.Any())
+            {
+                var pageHeadlineRenderingsDatasourceIds = pageHeadlineRenderings.Select(x => x.DatasourceID).ToList();
+                if (pageHeadlineRenderingsDatasourceIds != null && pageHeadlineRenderingsDatasourceIds.Any())
+                {
+                    var datasources = sourcePageItem.DataSources
+                        .Where(x => pageHeadlineRenderingsDatasourceIds.Any(id => id.Equals(x.ID, StringComparison.OrdinalIgnoreCase)))
+                        .DistinctBy(x => x.ID).ToList();
+
+                    //var datasources = sourcePageItem.DataSources.Where(x => pageHeadlineRenderingsDatasourceIds.Contains(x.ID))?.DistinctBy(x => x.ID);
+                    if (datasources != null && datasources.Any())
+                    {
+                        List<SitecoreCreateItemInput> items = new List<SitecoreCreateItemInput>();
+                        int counter = 0;
+                        foreach (var datasource in datasources)
+                        {
+                            if (datasource.Fields.Any(x => x.Name.Equals("Headline")))
+                            {
+                                var headlineField = datasource.Fields.FirstOrDefault(x => x.Name.Equals("Headline"));
+                                if (headlineField != null && !string.IsNullOrEmpty(headlineField.Value))
+                                {
+                                    //Always first page headline will be syncted page title field.
+                                    //Rest page headline datasources created as RTE in XMC Cloud
+                                    if (counter == 0)
+                                    {
+                                        if (matchedMapping.PAGETEMPLATEID.Equals(XMC_ConditionTreatment_TEMPLATE))
+                                            continue;
+                                        if (matchedMapping.PAGETEMPLATEID.Equals(XMC_GeneralT2_TEMPLATE))
+                                        {
+                                            await UpdateGeneralHeaderTitle(matchedMapping, headlineField.Value);
+                                            continue;
+                                        }
+                                    }
                                     var path = $"{matchedMapping.NEWURLPATH}/Data/{datasource.Name}";
-                                    var existingItem = await this.SitecoreGraphQLClient.QuerySingleItemAsync(accessToken, path);
+                                    var existingItem = await this.SitecoreGraphQLClient.QuerySingleItemAsync(_environment, _accessToken, path);
                                     if (existingItem == null)
                                     {
-                                        var inputItem = GetSitecoreCreateItemInput(datasource.Name,
+                                        var inputItem = XMCItemUtility.GetSitecoreCreateItemInput(datasource.Name,
                                     XMC_RTE_ITEM_TEMPLATEID, localDataItemId, "text", headlineField.Value);
                                         items.Add(inputItem);
                                     }
                                 }
                             }
+                            counter++;
                         }
                         if (items.Any())
-                            await this.SitecoreGraphQLClient.CreateBulkItemsBatchedAsync(items, accessToken, 10);
+                            await this.SitecoreGraphQLClient.CreateBulkItemsBatchedAsync(items, _environment, _accessToken, 10);
                     }
                 }
             }
         }
-        private string GetRenderingIdFromXml(RenderingDefinition rendering)
+
+        public static List<RenderingInfo> GetRenderingsForCurrentDevice(Item item)
         {
-            try
+            var results = new List<RenderingInfo>();
+
+            var renderings = item.Visualization.GetRenderings(Sitecore.Context.Device, false);
+            if (renderings == null)
+                return results;
+
+            foreach (var renderingReference in renderings)
             {
-                var xml = rendering.ToXml();
-                var doc = new XmlDocument();
-                doc.LoadXml(xml);
-                return doc.DocumentElement?.Attributes["s:id"]?.Value;
-            }
-            catch
-            {
-                return null;
-            }
-        }
+                if (renderingReference.RenderingItem == null)
+                    continue; // Skip broken rendering
 
-        private string GetDataSourceIdFromXml(RenderingDefinition rendering)
-        {
-            try
-            {
-                var xml = rendering.ToXml();
-                var doc = new XmlDocument();
-                doc.LoadXml(xml);
-                return doc.DocumentElement?.Attributes["s:ds"]?.Value;
-            }
-            catch
-            {
-                return null;
-            }
-        }
-
-        private string GetMergedLayoutXml(Sitecore.Data.Items.Item item)
-        {
-            var sharedLayout = item.Fields[Sitecore.FieldIDs.LayoutField]?.Value;
-            var finalLayout = item.Fields[Sitecore.FieldIDs.FinalLayoutField]?.Value;
-
-            if (string.IsNullOrWhiteSpace(finalLayout)) return sharedLayout;
-            if (string.IsNullOrWhiteSpace(sharedLayout)) return finalLayout;
-
-            var mergedLayout = new LayoutDefinition();
-
-            var sharedDef = LayoutDefinition.Parse(sharedLayout);
-            foreach (DeviceDefinition device in sharedDef.Devices)
-                mergedLayout.Devices.Add(device);
-
-            var finalDef = LayoutDefinition.Parse(finalLayout);
-            foreach (DeviceDefinition device in finalDef.Devices)
-            {
-                var existing = mergedLayout.GetDevice(device.ID);
-                if (existing != null)
-                    existing.Renderings = device.Renderings;
-                else
-                    mergedLayout.Devices.Add(device);
-            }
-
-            return mergedLayout.ToXml();
-        }
-
-        private SitecoreCreateItemInput GetSitecoreCreateItemInput(string itemName, string templateId, string parentId, string fieldName, string fieldValue)
-        {
-            var inputItem = new SitecoreCreateItemInput();
-            inputItem.Name = itemName;
-            inputItem.TemplateId = templateId;
-            inputItem.Language = "en";
-            inputItem.Parent = parentId;
-            var fields = new List<SitecoreFieldInput>();
-            if (!string.IsNullOrEmpty(fieldName))
-            {
-                fields.Add(new SitecoreFieldInput()
+                results.Add(new RenderingInfo
                 {
-                    Name = fieldName,
-                    Value = fieldValue
+                    RenderingName = renderingReference.RenderingItem.Name,
+                    RenderingId = renderingReference.RenderingID.ToString(),
+                    Placeholder = renderingReference.Placeholder,
+                    DatasourceID = renderingReference.Settings?.DataSource,
+                    Parameters = renderingReference.Settings?.Parameters,
+                    DeviceId = Sitecore.Context.Device.ID.ToString()
                 });
-                inputItem.Fields = fields;
             }
-            return inputItem;
+
+            return results;
         }
 
-        private async Task<string> CreateItem(string accessToken, string targetItemId, string itemName, string templateId, List<SitecoreFieldInput> fields = null)
+        private async Task UpdateGeneralHeaderTitle(PageMapping matchedMapping, string value)
+        {
+            var generalHeaderpath = $"{matchedMapping.NEWURLPATH}/Data/General Header";
+            var generalHeaderItem = await this.SitecoreGraphQLClient.QuerySingleItemAsync(_environment, _accessToken, generalHeaderpath);
+            if (generalHeaderItem != null)
+            {
+                var updateItemInput = new SitecoreUpdateItemInput()
+                {
+                    ItemId = generalHeaderItem.ItemId,
+                    Fields = new List<SitecoreFieldInput>()
+                    {
+                        new SitecoreFieldInput()
+                        {
+                            Name = "title",
+                            Value = value
+                        }
+                    },
+                    Language = "en"
+                };
+                await SitecoreGraphQLClient.UpdateBulkItemsBatchedAsync(new List<SitecoreUpdateItemInput>() { updateItemInput }, _environment, _accessToken, 10);
+            }
+        }
+
+
+        private async Task<string> CreateItem(string targetItemId, string itemName, string templateId, List<SitecoreFieldInput> fields = null)
         {
             string createdItemId = string.Empty;
             var createDataItemInput = new SitecoreCreateItemInput();
@@ -553,7 +683,7 @@ namespace CWXPTool.Controllers
             {
                 createDataItemInput.Fields = fields;
             }
-            var createdItem = await SitecoreGraphQLClient.CreateBulkItemsBatchedAsync(new List<SitecoreCreateItemInput>() { createDataItemInput }, accessToken, 10);
+            var createdItem = await SitecoreGraphQLClient.CreateBulkItemsBatchedAsync(new List<SitecoreCreateItemInput>() { createDataItemInput }, _environment, _accessToken, 10);
             if (createdItem != null)
                 createdItemId = createdItem.FirstOrDefault().ItemId;
             return createdItemId;
@@ -580,40 +710,44 @@ namespace CWXPTool.Controllers
             return pages;
         }
 
-        private async Task<bool> SyncPageFields(PageDataModel sourcePageItem, PageMapping pageMapping, SitecoreItem targetItem, string accessToken)
+        private async Task<bool> SyncPageFields(PageDataModel sourcePageItem, PageMapping pageMapping, SitecoreItem targetItem,
+            List<RenderingInfo> headlineRenderings)
         {
             var fields = new List<SitecoreFieldInput>() { };
+            
             var pageMetaTitle = GetSitecoreFieldInput(sourcePageItem, "PageMetaTitle", "pageMetaTitle");
             if (pageMetaTitle != null)
                 fields.Add(pageMetaTitle);
+            
             var metaDescription = GetSitecoreFieldInput(sourcePageItem, "MetaDescription", "metaDescription");
             if (metaDescription != null)
                 fields.Add(metaDescription);
-            var displayDescription = GetSitecoreFieldInput(sourcePageItem, "DisplayDescription", "Description");
-            if (displayDescription != null)
-                fields.Add(displayDescription);
-            var title = GetSitecoreFieldInput(sourcePageItem, "Title", "Title");
-            if (title != null)
-                fields.Add(title);
+            
             var metaKeywords = GetSitecoreFieldInput(sourcePageItem, "MetaKeywords", "metaKeywords");
             if (metaKeywords != null)
                 fields.Add(metaKeywords);
-            if (sourcePageItem.Fields.Any(x => !x.Name.Equals("DisplayDescription") && x.Type.Equals("Rich Text")))
-            {
-                var richTextField = sourcePageItem.Fields.FirstOrDefault(x => !x.Name.Equals("DisplayDescription") && x.Type.Equals("Rich Text"));
-                if (richTextField != null)
-                {
-                    fields.Add(new SitecoreFieldInput()
-                    {
-                        Name = "content",
-                        Value = richTextField.Value,
-                    });
-                }
-            }
+
+
+            var title = GetSitecoreFieldInput(sourcePageItem, "DisplayTitle", "Title");            
+            var pageHeadLine = GetPageHeadline(sourcePageItem, headlineRenderings);
+            if (pageMapping.PAGETEMPLATEID.Equals(XMC_ConditionTreatment_TEMPLATE))
+                title.Value = pageHeadLine;
+            if (title != null)
+                fields.Add(title);
+
+            var displayDescription = GetSitecoreFieldInput(sourcePageItem, "DisplayDescription", "Description");
+            if (displayDescription != null)
+                fields.Add(displayDescription);
+            
+            var displayContent = GetSitecoreFieldInput(sourcePageItem, "DisplayContent", "content");
+            if (displayContent != null)
+                fields.Add(displayContent);
+                                    
             if (XMC_LOCATION_PAGE_TEMPLATES.Contains(pageMapping.PAGETEMPLATEID))
             {
                 fields.AddRange(GetLocationPageFields(sourcePageItem));
             }
+
             if (fields.Any())
             {
                 var updateItemInput = new SitecoreUpdateItemInput()
@@ -622,7 +756,7 @@ namespace CWXPTool.Controllers
                     Fields = fields,
                     Language = "en"
                 };
-                return await SitecoreGraphQLClient.UpdateBulkItemsBatchedAsync(new List<SitecoreUpdateItemInput>() { updateItemInput }, accessToken, 10);
+                return await SitecoreGraphQLClient.UpdateBulkItemsBatchedAsync(new List<SitecoreUpdateItemInput>() { updateItemInput }, _environment, _accessToken, 10);
             }
 
             return false;
@@ -703,7 +837,6 @@ namespace CWXPTool.Controllers
 
         private async Task EnsureSitecorePathExistsAsync(
     string targetPath,
-    string accessToken,
     List<PageMapping> pageMappingItems)
         {
             // Find the nearest existing parent
@@ -717,7 +850,7 @@ namespace CWXPTool.Controllers
 
                 if (!string.IsNullOrEmpty(parentPath))
                 {
-                    var parentItem = await this.SitecoreGraphQLClient.QuerySingleItemAsync(accessToken, parentPath);
+                    var parentItem = await this.SitecoreGraphQLClient.QuerySingleItemAsync(_environment, _accessToken, parentPath);
 
                     if (parentItem != null)
                     {
@@ -742,7 +875,6 @@ namespace CWXPTool.Controllers
 
                 if (!string.IsNullOrEmpty(segmentPath))
                 {
-                    Sitecore.Diagnostics.Log.Info(segmentPath, typeof(ContentMigrationController));
                     segmentsToCreate.Add(segmentPath);
                 }
             }
@@ -756,7 +888,7 @@ namespace CWXPTool.Controllers
                     x.NEWURLPATH.Equals(segmentPath, StringComparison.OrdinalIgnoreCase));
 
                 // Check if segment already exists
-                var existingSegmentItem = await this.SitecoreGraphQLClient.QuerySingleItemAsync(accessToken, segmentPath);
+                var existingSegmentItem = await this.SitecoreGraphQLClient.QuerySingleItemAsync(_environment, _accessToken, segmentPath);
 
                 if (segmentMapping != null && existingSegmentItem == null)
                 {
@@ -771,7 +903,8 @@ namespace CWXPTool.Controllers
 
                     var createdItems = await this.SitecoreGraphQLClient.CreateBulkItemsBatchedAsync(
                         new List<SitecoreCreateItemInput> { createItemInput },
-                        accessToken,
+                        _environment,
+                        _accessToken,
                         10
                     );
 
@@ -794,7 +927,7 @@ namespace CWXPTool.Controllers
                 return new SitecoreFieldInput()
                 {
                     Name = xmcFieldName,
-                    Value = sourcePageItem.Fields.FirstOrDefault(x => x.Name == xpFieldName && !string.IsNullOrEmpty(x.Value))?.Value ?? string.Empty,
+                    Value = fieldValue,
                 };
             }
             return null;
@@ -808,10 +941,18 @@ namespace CWXPTool.Controllers
                 return new SitecoreFieldInput()
                 {
                     Name = xmcFieldName,
-                    Value = sourcePageItem.Fields.FirstOrDefault(x => x.Name == xpFieldName && !string.IsNullOrEmpty(x.Value))?.Value ?? string.Empty,
+                    Value = fieldValue,
                 };
             }
             return null;
+        }
+
+        public static bool IsGuidInput(string input)
+        {
+            if (string.IsNullOrWhiteSpace(input))
+                return false;
+
+            return Guid.TryParse(input, out _);
         }
     }
 }

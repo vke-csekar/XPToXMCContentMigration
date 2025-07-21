@@ -13,39 +13,37 @@ namespace CWXPMigration
 {
     public interface ISitecoreGraphQLClient
     {
-        Task<List<CreatedItem>> CreateBulkItemsBatchedAsync(List<SitecoreCreateItemInput> items, string accessToken, int batchSize = 50);
+        Task<List<CreatedItem>> CreateBulkItemsBatchedAsync(List<SitecoreCreateItemInput> items, string environment, string accessToken, int batchSize = 50);
 
         Task<bool> UpdateBulkItemsBatchedAsync(
             List<SitecoreUpdateItemInput> items,
+            string environment,
             string accessToken,
             int batchSize = 50);
 
-        Task<SitecoreItem> QuerySingleItemAsync(string accessToken, string path);
+        Task<SitecoreItem> QuerySingleItemAsync(string environment, string accessToken, string path);
 
         Task<QueryItemsResult<T>> QueryItemsAsync<T>(
+            string environment,
             string accessToken,
             string parentPath,
             List<string> fieldNames,
             Func<JObject, T> itemMapper,
             List<string> excludeTemplateIDs = null,
-            List<string> includeTemplateIDs = null);
+            List<string> includeTemplateIDs = null);        
     }
 
     public class SitecoreGraphQLClient : ISitecoreGraphQLClient
-    {
-        private readonly string _authoringUrl;
-        private readonly HttpClient _httpClient;
-        private readonly string _endpoint;
+    {        
+        private readonly HttpClient _httpClient;        
 
         public SitecoreGraphQLClient()
-        {
-            _authoringUrl = Constants.AuthoringUrl?.TrimEnd('/');
-            _httpClient = new HttpClient();
-            _endpoint = $"{_authoringUrl}/sitecore/api/authoring/graphql/v1";
-        }
+        {            
+            _httpClient = new HttpClient();            
+        }        
 
         public async Task<List<CreatedItem>> CreateBulkItemsBatchedAsync(
-        List<SitecoreCreateItemInput> items, string accessToken, int batchSize = 50)
+        List<SitecoreCreateItemInput> items, string environment, string accessToken, int batchSize = 50)
         {
             var createdItems = new List<CreatedItem>();
 
@@ -57,7 +55,7 @@ namespace CWXPMigration
                 var jsonBody = JsonConvert.SerializeObject(mutation);
 
                 Sitecore.Diagnostics.Log.Info(jsonBody, this);
-                var request = new HttpRequestMessage(HttpMethod.Post, _endpoint);
+                var request = new HttpRequestMessage(HttpMethod.Post, getEndpoint(environment));
                 request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
                 request.Content = new StringContent(jsonBody, Encoding.UTF8, "application/json");
 
@@ -97,6 +95,7 @@ namespace CWXPMigration
 
         public async Task<bool> UpdateBulkItemsBatchedAsync(
             List<SitecoreUpdateItemInput> items,
+            string environment,
             string accessToken,
             int batchSize = 50)
         {
@@ -110,7 +109,7 @@ namespace CWXPMigration
                     var mutation = SitecoreMutationBuilder.UpdateBulkItems(batch);
                     var jsonBody = JsonConvert.SerializeObject(mutation);
 
-                    var request = new HttpRequestMessage(HttpMethod.Post, _endpoint);
+                    var request = new HttpRequestMessage(HttpMethod.Post, getEndpoint(environment));
                     request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
                     request.Content = new StringContent(jsonBody, Encoding.UTF8, "application/json");
 
@@ -167,7 +166,7 @@ namespace CWXPMigration
         }
 
 
-        public async Task<SitecoreItem> QuerySingleItemAsync(string accessToken, string path)
+        public async Task<SitecoreItem> QuerySingleItemAsync(string environment, string accessToken, string path)
         {
             var query = SitecoreQueryBuilder.GetItemQueryByPath(path);
 
@@ -180,7 +179,7 @@ namespace CWXPMigration
             {
                 _httpClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
                 _httpClient.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
-                var response = await _httpClient.PostAsync(_endpoint, jsonContent);
+                var response = await _httpClient.PostAsync(getEndpoint(environment), jsonContent);
 
                 if (!response.IsSuccessStatusCode)
                 {
@@ -216,7 +215,8 @@ namespace CWXPMigration
         }
 
         public async Task<QueryItemsResult<T>> QueryItemsAsync<T>(
-            string accessToken,
+            string environment,
+            string accessToken,            
             string parentPath,
             List<string> fieldNames,
             Func<JObject, T> itemMapper,
@@ -255,7 +255,7 @@ namespace CWXPMigration
                     _httpClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
                     _httpClient.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
 
-                    var response = await _httpClient.PostAsync(_endpoint, jsonContent);
+                    var response = await _httpClient.PostAsync(getEndpoint(environment), jsonContent);
 
                     if (!response.IsSuccessStatusCode)
                     {
@@ -327,6 +327,12 @@ namespace CWXPMigration
                 Console.WriteLine("Error querying items: " + ex.Message);
                 return null;
             }
+        }
+
+        private string getEndpoint(string environment)
+        {
+            string authoringUrl = Sitecore.Configuration.Settings.GetSetting($"CW.{environment}.AuthoringUrl")?.TrimEnd('/');
+            return $"{authoringUrl}/sitecore/api/authoring/graphql/v1";
         }
 
     }

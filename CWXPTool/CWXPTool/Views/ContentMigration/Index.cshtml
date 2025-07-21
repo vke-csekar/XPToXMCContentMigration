@@ -2,10 +2,33 @@
 
 @using (Html.BeginForm("Index", "ContentMigration", FormMethod.Post))
 {
-    <label>Enter Sitecore Item Path:</label>
+    <label>Enter Sitecore Item Path Or ID:</label>
     <input type="text" name="itemPath" value="@Model.ItemPath" style="width:400px;" />
+
+    <br />
+    <br />
+
+    <label>Select Environment:</label>
+    <select name="environment" style="width:200px;">
+        <option value="DEV" @(Model.Environment == "DEV" ? "selected" : "")>DEV</option>
+        <option value="UAT" @(Model.Environment == "UAT" ? "selected" : "")>UAT</option>
+        <option value="PROD" @(Model.Environment == "PROD" ? "selected" : "")>PROD</option>
+    </select>
+
+    <br />
+    <br />
+
+    <label>
+        <input type="checkbox" name="reimport" @(Model.Reimport ? "checked=\"checked\"" : "") />
+        Reimport Pages and Data Sources
+    </label>
+
+    <br />
+    <br />
+
     <button type="submit">Submit</button>
 }
+
 
 @if (Model.Items != null && Model.Items.Any())
 {

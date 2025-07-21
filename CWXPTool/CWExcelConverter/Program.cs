@@ -72,7 +72,7 @@ class Program
                 {
                     var item = new PageItem
                     {
-                        CurrentUrl = csv.GetField("CURRENT URL") ?? "",
+                        CurrentUrl = csv.GetField("CURRENT URL")?.Replace("/Home/", "/") ?? "",
                         NewUrlPath = csv.GetField("NEW URL PATH") ?? "",
                         PageTemplate = csv.GetField("PAGE TEMPLATE") ?? csv.GetField("PAGE TEMPLATE/PAGE TYPE") ?? "",
                         NetNewCopy = csv.GetField("NET NEW COPY (Y/N/Redirect)") ?? ""
@@ -83,7 +83,7 @@ class Program
                         !item.CurrentUrl.StartsWith("http", StringComparison.OrdinalIgnoreCase) || string.IsNullOrWhiteSpace(item.PageTemplate) ||
                         string.IsNullOrWhiteSpace(item.NewUrlPath))
                         continue;
-
+                    
                     // Assign PageTemplateId based on rules
                     item.PageTemplateId = MapPageTemplateId(item.PageTemplate, item.CurrentUrl);
 
@@ -121,10 +121,10 @@ class Program
             return "{940E3495-FBB0-41F6-91CC-2DDBD6D64D7F}";
 
         if (template.Contains("general 2", StringComparison.OrdinalIgnoreCase))
-            return "{D2B65608-E58C-4E89-9A58-25FD1474C762}";
+            return "{2400C94A-5BB1-4F69-85CC-3AD185DC4BCA}";
 
         if (template.Contains("general 1", StringComparison.OrdinalIgnoreCase))
-            return "{B25FC994-9D77-45D2-A643-9911C243CA32}";
+            return "{C8749C06-CA6C-4630-83E0-EA1A9A973907}";
 
         if (template.Contains("location") || template.Contains("locations"))
         {
@@ -142,6 +142,9 @@ class Program
 
             return "{1B371DE2-704C-4D43-A94B-FC04B95DC6B8}";
         }
+
+        if(template.Contains("teachingsheets")) 
+            return "{39EBED3F-5965-4A68-9A4C-45E7D29043C8}";
 
         return "";
     }

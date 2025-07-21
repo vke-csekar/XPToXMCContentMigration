@@ -1,82 +1,84 @@
 ﻿using CWXPMigration.Models;
 using Microsoft.Extensions.DependencyInjection;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
+using System.Web.UI.WebControls;
 
 namespace CWXPMigration.Services
 {
     public interface ISideNavMigrationService
     {
-        Task ProcessRichTextRenderingsAsync(
+        Task ProcessAsync(
             IEnumerable<RenderingInfo> rteRenderings,
             PageDataModel sourcePageItem,
             string dataItemId,
             string newUrlPath,
+            string environment,
             string accessToken);                        
     }
-    public class SideNavMigrationService : ISideNavMigrationService
-    {        
-        public ISitecoreGraphQLClient SitecoreGraphQLClient { get; set; }
-        public SideNavMigrationService(ISitecoreGraphQLClient sitecoreGraphQLClient) { 
-            this.SitecoreGraphQLClient = sitecoreGraphQLClient;
+    public class SideNavMigrationService : BaseMigrationService, ISideNavMigrationService
+    {                
+        public SideNavMigrationService(ISitecoreGraphQLClient sitecoreGraphQLClient) : base(sitecoreGraphQLClient) { 
+            
         }
 
-        public async Task ProcessRichTextRenderingsAsync(
+        string _environment = string.Empty;
+        string _accessToken = string.Empty;
+
+        public async Task ProcessAsync(
             IEnumerable<RenderingInfo> rteRenderings,
             PageDataModel sourcePageItem,
             string dataItemId,
             string newUrlPath,
+            string environment,
             string accessToken)
         {
+            _environment = environment;
+            _accessToken = accessToken;
+
+            List<RichTextSection> sideNavContents = new List<RichTextSection>();
+
             foreach (var rteRendering in rteRenderings)
             {
-                var rteDatasource = GetRichTextDatasource(sourcePageItem, rteRendering.DatasourceID);
+                var rteDatasource = XMCItemUtility.GetDatasource(sourcePageItem, rteRendering.DatasourceID);
                 if (rteDatasource == null)
                     continue;
 
-                var rteField = GetRichTextField(rteDatasource);
+                var rteField = XMCItemUtility.GetRichTextField(rteDatasource);
                 if (rteField == null)
                     continue;
 
-                var sideNavContents = RichTextSplitter.SplitByH2(rteField.Value);
-                if (sideNavContents == null || !sideNavContents.Any())
+                var contents = RichTextSplitter.SplitByH2(rteField.Value);
+                if (contents == null || !contents.Any())
                     continue;
 
-                await CreateSideNavContentItemsAsync(sideNavContents, dataItemId, newUrlPath, accessToken);
+                sideNavContents.AddRange(contents);                
             }
+
+            if(sideNavContents.Any())
+                await CreateSideNavContentItemsAsync(sideNavContents, dataItemId, newUrlPath);
         }
 
-        private DataSourceDetail GetRichTextDatasource(PageDataModel sourcePageItem, string datasourceId)
-        {
-            return sourcePageItem.DataSources.FirstOrDefault(x => x.ID.Equals(datasourceId));
-        }
-
-        public XPField GetRichTextField(DataSourceDetail datasource)
-        {
-            return datasource.Fields.FirstOrDefault(f =>
-                !string.IsNullOrEmpty(f.Value) &&
-                f.Type.Equals("Rich Text", System.StringComparison.OrdinalIgnoreCase));
-        }
-
-        private async Task CreateSideNavContentItemsAsync(IEnumerable<RichTextSection> contents, string dataItemId, string newUrlPath, string accessToken)
+        private async Task CreateSideNavContentItemsAsync(IEnumerable<RichTextSection> contents, string dataItemId, string newUrlPath)
         {
             var sideNavsWithNoTitle = contents.Where(x => string.IsNullOrEmpty(x.Title));
             var sideNavsWithTitle = contents.Where(x => !string.IsNullOrEmpty(x.Title));
 
-            await CreateUntitledItemsAsync(sideNavsWithNoTitle, dataItemId, newUrlPath, accessToken);
+            await CreateUntitledItemsAsync(sideNavsWithNoTitle, dataItemId, newUrlPath);
 
             if (sideNavsWithTitle.Any())
             {
-                var sideNavContainerItemId = await EnsureSideNavContainerAsync(dataItemId, newUrlPath, accessToken);
+                var sideNavContainerItemId = await EnsureSideNavContainerAsync(dataItemId, newUrlPath);
                 if (!string.IsNullOrEmpty(sideNavContainerItemId))
                 {
-                    await CreateTitledItemsAsync(sideNavsWithTitle, sideNavContainerItemId, newUrlPath, accessToken);
+                    await CreateTitledItemsAsync(sideNavsWithTitle, sideNavContainerItemId, newUrlPath);
                 }                
             }
         }
 
-        private async Task CreateUntitledItemsAsync(IEnumerable<RichTextSection> noTitleItems, string parentItemId, string newUrlPath, string accessToken)
+        private async Task CreateUntitledItemsAsync(IEnumerable<RichTextSection> noTitleItems, string parentItemId, string newUrlPath)
         {
             var items = new List<SitecoreCreateItemInput>();
             int counter = 1;
@@ -84,7 +86,7 @@ namespace CWXPMigration.Services
             foreach (var content in noTitleItems)
             {
                 var path = $"{newUrlPath}/Data/RTE-{counter}";
-                var existingItem = await this.SitecoreGraphQLClient.QuerySingleItemAsync(accessToken, path);
+                var existingItem = await this.SitecoreGraphQLClient.QuerySingleItemAsync(_environment, _accessToken, path);
                 if (existingItem == null) {
                     items.Add(CreateRteInput($"RTE-{counter}", content.HtmlContent, parentItemId));
                 }                
@@ -92,24 +94,24 @@ namespace CWXPMigration.Services
             }
 
             if(items.Any())
-                await this.SitecoreGraphQLClient.CreateBulkItemsBatchedAsync(items, accessToken, 10);
+                await this.SitecoreGraphQLClient.CreateBulkItemsBatchedAsync(items, _environment, _accessToken, 10);
         }
 
-        private async Task CreateTitledItemsAsync(IEnumerable<RichTextSection> titledItems, string sideNavContainerItemId, string newUrlPath, string accessToken)
+        private async Task CreateTitledItemsAsync(IEnumerable<RichTextSection> titledItems, string sideNavContainerItemId, string newUrlPath)
         {
             foreach (var content in titledItems)
             {                
                 var sideNavItemName = PathFormatter.FormatItemName(content.Title);
-                var sectionItemId = await EnsureSideNavSectionAsync(content.Title, sideNavItemName, sideNavContainerItemId, newUrlPath, accessToken);
+                var sectionItemId = await EnsureSideNavSectionAsync(content.Title, sideNavItemName, sideNavContainerItemId, newUrlPath);
 
                 if (!string.IsNullOrEmpty(sectionItemId) && !string.IsNullOrEmpty(content.HtmlContent))
                 {
                     var path = $"{newUrlPath}/Data/Side Nav/{sideNavItemName}/RTE";
-                    var existingItem = await this.SitecoreGraphQLClient.QuerySingleItemAsync(accessToken, path);
+                    var existingItem = await this.SitecoreGraphQLClient.QuerySingleItemAsync(_environment, _accessToken, path);
                     if(existingItem == null)
                     {
                         var inputItem = CreateRteInput("RTE", content.HtmlContent, sectionItemId);                        
-                        await this.SitecoreGraphQLClient.CreateBulkItemsBatchedAsync(new List<SitecoreCreateItemInput>() { inputItem }, accessToken);
+                        await this.SitecoreGraphQLClient.CreateBulkItemsBatchedAsync(new List<SitecoreCreateItemInput>() { inputItem }, _environment, _accessToken);
                     }                    
                 }
             }
@@ -134,10 +136,10 @@ namespace CWXPMigration.Services
             };
         }
 
-        private async Task<string> EnsureSideNavContainerAsync(string parentId, string newUrlPath, string accessToken)
+        private async Task<string> EnsureSideNavContainerAsync(string parentId, string newUrlPath)
         {
             var path = $"{newUrlPath}/Data/Side Nav";
-            var existingItem = await this.SitecoreGraphQLClient.QuerySingleItemAsync(accessToken, path);
+            var existingItem = await this.SitecoreGraphQLClient.QuerySingleItemAsync(_environment, _accessToken, path);
 
             if (existingItem != null)
                 return existingItem.ItemId;
@@ -150,15 +152,15 @@ namespace CWXPMigration.Services
                 Parent = parentId
             };
 
-            var created = await this.SitecoreGraphQLClient.CreateBulkItemsBatchedAsync(new List<SitecoreCreateItemInput> { createItemInput }, accessToken, 10);
+            var created = await this.SitecoreGraphQLClient.CreateBulkItemsBatchedAsync(new List<SitecoreCreateItemInput> { createItemInput }, _environment, _accessToken, 10);
             return created.First().ItemId;
         }
 
-        private async Task<string> EnsureSideNavSectionAsync(string title, string sideNavItemName, string parentId, string newUrlPath, string accessToken)
+        private async Task<string> EnsureSideNavSectionAsync(string title, string sideNavItemName, string parentId, string newUrlPath)
         {            
             var path = $"{newUrlPath}/Data/Side Nav/{sideNavItemName}";
 
-            var existingItem = await this.SitecoreGraphQLClient.QuerySingleItemAsync(accessToken, path);
+            var existingItem = await this.SitecoreGraphQLClient.QuerySingleItemAsync(_environment, _accessToken, path);
 
             if (existingItem != null)
                 return existingItem.ItemId;
@@ -178,7 +180,7 @@ namespace CWXPMigration.Services
                 Fields = fields
             };            
 
-            var created = await this.SitecoreGraphQLClient.CreateBulkItemsBatchedAsync(new List<SitecoreCreateItemInput> { createItemInput }, accessToken, 10);
+            var created = await this.SitecoreGraphQLClient.CreateBulkItemsBatchedAsync(new List<SitecoreCreateItemInput> { createItemInput }, _environment, _accessToken, 10);
             return created.First().ItemId;
         }
     }

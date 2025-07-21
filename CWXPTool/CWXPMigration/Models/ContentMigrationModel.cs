@@ -7,6 +7,10 @@ namespace CWXPMigration.Models
     {
         public string RenderingName { get; set; }
         public string DatasourceID { get; set; }
+        public string RenderingId { get; set; }
+        public string Placeholder { get; set; }        
+        public string Parameters { get; set; }
+        public string DeviceId { get; set; }
     }
 
     public class RenderingDetail
@@ -27,6 +31,8 @@ namespace CWXPMigration.Models
     public class ContentMigrationModel
     {
         public string ItemPath { get; set; }
+        public string Environment { get; set; }
+        public bool Reimport { get; set; }
         public List<PageDataModel> Items { get; set; }
     }
 

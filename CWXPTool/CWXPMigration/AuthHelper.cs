@@ -11,15 +11,15 @@ namespace CWXPMigration
     {
         private static readonly HttpClient _httpClient = new HttpClient();
 
-        public static async Task<AuthResponse> GetAuthTokenAsync()
+        public static async Task<AuthResponse> GetAuthTokenAsync(string environment)
         {
             Sitecore.Diagnostics.Log.Info($"Starting authentication at authUrl: {Constants.AuthUrl}", typeof(AuthHelper));
 
             var formData = new Dictionary<string, string>
         {
             { "grant_type", "client_credentials" },
-            { "client_id", Constants.Client_ID },
-            { "client_secret", Constants.Client_Secret },
+            { "client_id", Sitecore.Configuration.Settings.GetSetting($"CW.{environment}.ClientId") },
+            { "client_secret", Sitecore.Configuration.Settings.GetSetting($"CW.{environment}.ClientSecret") },
             { "audience", Constants.Audience }
         };
 

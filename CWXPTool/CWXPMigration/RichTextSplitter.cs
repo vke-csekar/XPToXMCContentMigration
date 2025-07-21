@@ -2,11 +2,37 @@
 using HtmlAgilityPack;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading;
 
 namespace CWXPMigration
 {
     public class RichTextSplitter
     {
+        public static string AddIdAttributeToAllH2(string html)
+        {
+            if (string.IsNullOrEmpty(html))
+                return html;
+
+            var doc = new HtmlDocument();
+            doc.LoadHtml(html);
+
+            var h2Nodes = doc.DocumentNode.SelectNodes("//h2");
+
+            if (h2Nodes != null)
+            {            
+                int counter = 0;                
+
+                foreach (var h2 in h2Nodes)
+                {                    
+                    string uniqueId = $"keypoint{counter}";                                                                                
+                    h2.SetAttributeValue("id", uniqueId);
+                    counter++;
+                }
+            }
+
+            return doc.DocumentNode.OuterHtml;
+        }
+
         public static List<RichTextSection> SplitByH2(string html)
         {
             if (string.IsNullOrWhiteSpace(html))

@@ -165,10 +165,13 @@
     <Compile Include="PathFormatter.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
     <Compile Include="RichTextSplitter.cs" />
+    <Compile Include="Services\BaseMigrationService.cs" />
     <Compile Include="Services\SideNavMigrationService.cs" />
+    <Compile Include="Services\TeachingSheetMigrationService.cs" />
     <Compile Include="SitecoreGraphQLClient.cs" />
     <Compile Include="SitecoreMutationBuilder.cs" />
     <Compile Include="SitecoreQueryBuilder.cs" />
+    <Compile Include="XMCItemUtility.cs" />
   </ItemGroup>
   <ItemGroup>
     <None Include="app.config" />
