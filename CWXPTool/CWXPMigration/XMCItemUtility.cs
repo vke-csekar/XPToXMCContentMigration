@@ -1,4 +1,5 @@
 ﻿using CWXPMigration.Models;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 
@@ -50,6 +51,23 @@ namespace CWXPMigration
                 };
             }
             return null;
+        }
+
+        public static string FormatGuid(string itemId)
+        {
+            if (string.IsNullOrEmpty(itemId) || itemId.Length != 32 || !System.Text.RegularExpressions.Regex.IsMatch(itemId, @"^[0-9A-Fa-f]{32}$"))
+            {
+                throw new ArgumentException("Invalid 32-character hex string.");
+            }
+
+            var guid = string.Format("{0}-{1}-{2}-{3}-{4}",
+                itemId.Substring(0, 8),
+                itemId.Substring(8, 4),
+                itemId.Substring(12, 4),
+                itemId.Substring(16, 4),
+                itemId.Substring(20));
+
+            return $"{{{guid.ToUpperInvariant()}}}";
         }
     }
 }

@@ -122,7 +122,7 @@ namespace CWXPMigration.Services
             return new SitecoreCreateItemInput
             {
                 Name = itemName,
-                TemplateId = "{0EFFE34A-636F-4288-BA3B-0AF056AAD42B}",
+                TemplateId = XMC_Template_Constants.RTE,
                 Language = "en",
                 Parent = parentItemId,
                 Fields = new List<SitecoreFieldInput>
@@ -147,7 +147,7 @@ namespace CWXPMigration.Services
             var createItemInput = new SitecoreCreateItemInput
             {
                 Name = "Side Nav",
-                TemplateId = "{A3DC84B7-CDF1-468C-92EF-C33DC4311075}",
+                TemplateId = XMC_Template_Constants.SideNav,
                 Language = "en",
                 Parent = parentId
             };
@@ -174,7 +174,7 @@ namespace CWXPMigration.Services
             var createItemInput = new SitecoreCreateItemInput
             {
                 Name = sideNavItemName,
-                TemplateId = "{72BB023A-CE3E-4523-B4AA-16E54561D8D4}",
+                TemplateId = XMC_Template_Constants.SideNavSection,
                 Language = "en",
                 Parent = parentId,
                 Fields = fields

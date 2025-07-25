@@ -172,6 +172,7 @@
   </ItemGroup>
   <ItemGroup>
     <Content Include="App_Config\Include\XMCloud.Settings.config" />
+    <Content Include="App_Config\Include\Z.Project\DependencyInjection.config" />
     <None Include="packages.config" />
   </ItemGroup>
   <ItemGroup>

@@ -2,6 +2,7 @@
 using HtmlAgilityPack;
 using System.Collections.Generic;
 using System.Linq;
+using System.Net;
 using System.Threading;
 
 namespace CWXPMigration
@@ -103,8 +104,8 @@ namespace CWXPMigration
                 return;
 
             var section = new RichTextSection
-            {
-                Title = header?.InnerText.Trim(),
+            {                
+                Title = header != null ? WebUtility.HtmlDecode(header.InnerText.Trim()) : null,
                 HtmlContent = string.Join("", content.Select(n => n.OuterHtml))
             };
             sections.Add(section);

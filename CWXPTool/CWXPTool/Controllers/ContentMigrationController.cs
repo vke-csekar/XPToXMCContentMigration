@@ -7,48 +7,18 @@ using Newtonsoft.Json;
 using Sitecore.Data;
 using Sitecore.Data.Fields;
 using Sitecore.Data.Items;
-using Sitecore.Layouts;
-using Sitecore.StringExtensions;
 using System;
 using System.Collections.Generic;
 using System.Data;
 using System.Linq;
 using System.Threading.Tasks;
 using System.Web.Mvc;
-using System.Xml;
 
 namespace CWXPTool.Controllers
 {
     public class ContentMigrationController : Controller
     {
-        const string XP_BASE_PAGE_TEMPLATEID = "{8F3DE639-B021-42CE-AE90-0E07BECB6B03}";
-        const string SITECORE_XP_PRFIX = "/sitecore/content/CHW/Home/";
-        const string OFFICE_HOURS_FOLDER_TEMPLATEID = "{87409A28-AD55-4E80-B814-DAE11AF579B0}";
-        const string PHONE_HOURS_FOLDER_TEMPLATEID = "{BE526692-1363-4CA1-905B-4BDD7E72244E}";
-        const string XP_MIGRATION_LOG_JSON_PATH = "F:\\Migration\\CWXPMigrationContent.json";
-        const string XP_RTE_RENDERING_NAME = "RichText";
-        const string XP_PAGEHEADLINE_RENDERING_NAME = "PageHeadline";
-        const string XP_HEADLINE_RENDERING_NAME = "Headline";
-        const string XP_RTE_PLAIN_RENDERING_NAME = "RichText Plain";
-        const string XP_Publication_Footer_RENDERING_NAME = "Publication Footer";
-        const string XP_VideoMainBody_RENDERING_NAME = "Video Main Body";
-
-        readonly string[] XP_RENDERING_NAMES = new string[] { "PageHeadline", "Headline", "RichText", "RichText Plain", "Publication Footer",
-        "Video Main Body"};
-
-        const string SITECORE_XMC_PREFIX = "/sitecore/content/CW/childrens/Home/";
-        const string XMC_DATA_ITEM_TEMPLATEID = "{1C82E550-EBCD-4E5D-8ABD-D50D0809541E}";
-        const string XMC_RTE_ITEM_TEMPLATEID = "{0EFFE34A-636F-4288-BA3B-0AF056AAD42B}";
-        const string XMC_TEXT_MEDIA_TEMPLATEID = "{0EE2E1D9-DDD5-471A-9BE3-0F39AD0FC4E2}";
-
-        readonly string[] XMC_SIDE_NAV_PAGE_TEMPLATES = new string[] { "{4D49E913-37B3-4946-9372-7BB0DCA63BC9}" };
-        readonly string[] XMC_LOCATION_PAGE_TEMPLATES = new string[] { "{6274DC7B-91E7-4243-B5DA-96604F2EBBEA}",
-            "{7A4E0C65-C397-4E65-A941-7CF879C0B727}", "{BB35FDA8-7E1F-48DC-A556-FA8FD89F96C2}", "{CE453EDE-ED09-4928-80B0-143556AA52E8}",
-        "{1B371DE2-704C-4D43-A94B-FC04B95DC6B8}" };
-        readonly string XMC_TEACHING_SHEETS_TEMPLATE = "{39EBED3F-5965-4A68-9A4C-45E7D29043C8}";
-        readonly string XMC_GeneralT2_TEMPLATE = "{2400C94A-5BB1-4F69-85CC-3AD185DC4BCA}";
-        readonly string XMC_ConditionTreatment_TEMPLATE = "{4D49E913-37B3-4946-9372-7BB0DCA63BC9}";
-
+                
         public ISitecoreGraphQLClient SitecoreGraphQLClient { get; set; }
         public ISideNavMigrationService SideNavMigrationService { get; set; }
         public ITeachingSheetMigrationService TeachingSheetMigrationService { get; set; }
@@ -113,11 +83,11 @@ namespace CWXPTool.Controllers
 
             List<PageDataModel> xpPageDataItems = new List<PageDataModel>();
 
-            if (rootItem != null && rootItem.Template.BaseTemplates.Any(t => t.ID == ID.Parse(XP_BASE_PAGE_TEMPLATEID)))
+            if (rootItem != null && rootItem.Template.BaseTemplates.Any(t => t.ID == ID.Parse(XP_Page_Template_Constants.XP_BASE_PAGE_TEMPLATEID)))
             {
                 var pages = rootItem.Axes
                     .GetDescendants()
-                    .Where(descendant => descendant.Template.BaseTemplates.Any(t => t.ID.ToString() == XP_BASE_PAGE_TEMPLATEID))
+                    .Where(descendant => descendant.Template.BaseTemplates.Any(t => t.ID.ToString() == XP_Page_Template_Constants.XP_BASE_PAGE_TEMPLATEID))
                     .ToList();
 
                 pages.Insert(0, rootItem); // include root item itself
@@ -127,11 +97,13 @@ namespace CWXPTool.Controllers
                     var pageData = ExtractPageData(pageItem, database);
                     if (pageData.Renderings.Any() && pageData.DataSources.Any())
                     {
+                        Sitecore.Diagnostics.Log.Info("XP Page ItemID: " + pageData.ItemID, this);
+                        Sitecore.Diagnostics.Log.Info("XP Page: " + pageData.Page, this);
                         xpPageDataItems.Add(pageData);
                     }
                 }
 
-                System.IO.File.WriteAllText(XP_MIGRATION_LOG_JSON_PATH, JsonConvert.SerializeObject(xpPageDataItems));
+                System.IO.File.WriteAllText(Constants.XP_MIGRATION_LOG_JSON_PATH, JsonConvert.SerializeObject(xpPageDataItems));
             }
 
             return xpPageDataItems;
@@ -149,12 +121,13 @@ namespace CWXPTool.Controllers
                     // Handles CURRENTURL (with prefix).
                     // The CURRENTURL value from Excel contains a full URL; this extracts only the corresponding Sitecore content path.
                     // Cleans the URL by removing any encoded or unwanted special characters.
-                    x.CURRENTURL = GetSitecorePathFromUrl(x.CURRENTURL, x.PAGETEMPLATEID, SITECORE_XP_PRFIX);
-
+                    x.CURRENTURL = GetSitecorePathFromUrl(x.CURRENTURL, x.PAGETEMPLATEID, Constants.SITECORE_XP_PRFIX);
+                    Sitecore.Diagnostics.Log.Info("CURRENTURL: " + x.CURRENTURL, this);
                     // Handles NEWURLPATH (with prefix).
                     // The NEWURLPATH value from Excel contains a partial path of Sitecore item; this appends XMC root paths.
                     // Cleans the URL by removing any encoded or unwanted special characters.
-                    x.NEWURLPATH = GetSitecorePathFromUrl(x.NEWURLPATH, x.PAGETEMPLATEID, SITECORE_XMC_PREFIX);
+                    x.NEWURLPATH = GetSitecorePathFromUrl(x.NEWURLPATH, x.PAGETEMPLATEID, Constants.SITECORE_XMC_PREFIX);
+                    Sitecore.Diagnostics.Log.Info("NEWURLPATH: " + x.NEWURLPATH, this);
                 });
             }
             return pageMappings;
@@ -170,9 +143,9 @@ namespace CWXPTool.Controllers
                 url.StartsWith("https", StringComparison.OrdinalIgnoreCase))
             {
                 try
-                {
+                {                    
                     var uri = new Uri(url);
-                    path = uri.AbsolutePath;
+                    path = Uri.UnescapeDataString(uri.AbsolutePath);
                 }
                 catch (UriFormatException ex)
                 {
@@ -180,7 +153,7 @@ namespace CWXPTool.Controllers
                 }
             }            
 
-            string normalizedPath = pageTemplateId.Equals(XMC_TEACHING_SHEETS_TEMPLATE) ? path.TrimStart('/') : path.TrimStart('/').Replace("-", " ");
+            string normalizedPath = pageTemplateId.Equals(XMC_Page_Template_Constants.Teaching_Sheets) ? path.TrimStart('/') : path.TrimStart('/').Replace("-", " ");
             return string.IsNullOrEmpty(prefix) ? normalizedPath : prefix + normalizedPath;
         }
 
@@ -209,7 +182,7 @@ namespace CWXPTool.Controllers
             {
                 foreach (var renderingInfo in renderingInfos)
                 {
-                    if (renderingInfo != null && XP_RENDERING_NAMES.Contains(renderingInfo.RenderingName))
+                    if (renderingInfo != null && XP_RenderingName_Constants.XP_RENDERING_NAMES.Contains(renderingInfo.RenderingName))
                     {
                         uniqueDataSourceIds.Add(renderingInfo.DatasourceID);
                         pageModel.Renderings.Add(renderingInfo);
@@ -270,8 +243,9 @@ namespace CWXPTool.Controllers
 
                     System.Diagnostics.Debug.WriteLine($"Processing batch {i + 1} with {batch.Count} items");
 
-                    foreach (var sourcePageItem in batch)
+                    foreach (var batchItem in batch)
                     {
+                        var sourcePageItem = batchItem;
                         var matchedMapping = pageMappingItems
                             .FirstOrDefault(mapping =>
                                 !string.IsNullOrEmpty(mapping.CURRENTURL) &&
@@ -302,10 +276,10 @@ namespace CWXPTool.Controllers
                                     string sideNavItemId = string.Empty;
 
                                     var headlineRenderings = new List<RenderingInfo>();
-                                    var headlineRenderings1 = sourcePageItem.Renderings.Where(r => r.RenderingName.Contains(XP_HEADLINE_RENDERING_NAME)).ToList();
+                                    var headlineRenderings1 = sourcePageItem.Renderings.Where(r => r.RenderingName.Contains(XP_RenderingName_Constants.Headline)).ToList();
                                     if (headlineRenderings1 != null && headlineRenderings1.Any())
                                         headlineRenderings.AddRange(headlineRenderings1);
-                                    var headlineRenderings2 = sourcePageItem.Renderings.Where(r => r.RenderingName.Contains(XP_PAGEHEADLINE_RENDERING_NAME));
+                                    var headlineRenderings2 = sourcePageItem.Renderings.Where(r => r.RenderingName.Contains(XP_RenderingName_Constants.PageHeadline));
                                     if (headlineRenderings2 != null && headlineRenderings2.Any())
                                         headlineRenderings.AddRange(headlineRenderings2);
 
@@ -313,30 +287,30 @@ namespace CWXPTool.Controllers
 
                                     var dataItem = await SitecoreGraphQLClient.QuerySingleItemAsync(_environment, _accessToken, matchedMapping.NEWURLPATH + "/Data");
                                     if (dataItem == null)
-                                        dataItemId = await CreateItem(targetItemId, "Data", XMC_DATA_ITEM_TEMPLATEID);
+                                        dataItemId = await CreateItem(targetItemId, "Data", XMC_Template_Constants.Data);
                                     else
                                         dataItemId = dataItem.ItemId;
                                     if (!string.IsNullOrEmpty(dataItemId))
                                     {
-                                        var rteRenderings = sourcePageItem.Renderings.Where(r => r.RenderingName.Contains(XP_RTE_RENDERING_NAME));
+                                        var rteRenderings = sourcePageItem.Renderings.Where(r => r.RenderingName.Contains(XP_RenderingName_Constants.RichText));
 
-                                        var rtePlainRenderings = sourcePageItem.Renderings.Where(r => r.RenderingName.Contains(XP_RTE_PLAIN_RENDERING_NAME));
+                                        var rtePlainRenderings = sourcePageItem.Renderings.Where(r => r.RenderingName.Contains(XP_RenderingName_Constants.RichText_Plain));
 
                                         //Page Specific Data Migration
-                                        if (XMC_SIDE_NAV_PAGE_TEMPLATES.Contains(xmcTemplateId))
+                                        if (XMC_Page_Template_Constants.Side_Nav_Templates.Contains(xmcTemplateId))
                                         {
-                                            await SideNavMigrationService.ProcessAsync(rteRenderings, sourcePageItem, dataItemId, matchedMapping.NEWURLPATH, _environment, _accessToken);
-                                            sourcePageItem.DataSources.RemoveAll(x => rteRenderings.Any(y => x.ID.Equals(y.DatasourceID, StringComparison.OrdinalIgnoreCase)));
+                                            await SideNavMigrationService.ProcessAsync(rteRenderings, sourcePageItem, dataItemId, matchedMapping.NEWURLPATH, _environment, _accessToken);                                            
+                                            sourcePageItem = RemoveRenderingDatasources(sourcePageItem, sourcePageItem.Renderings, XP_RenderingName_Constants.RichText);
                                         }
 
-                                        if (xmcTemplateId.Equals(XMC_TEACHING_SHEETS_TEMPLATE))
-                                        {
-                                            var publicationInfoRendering = sourcePageItem.Renderings.FirstOrDefault(x => x.RenderingName.Contains(XP_Publication_Footer_RENDERING_NAME));
-                                            await TeachingSheetMigrationService.ProcessAsync(rteRenderings, publicationInfoRendering, sourcePageItem, dataItemId, matchedMapping.NEWURLPATH, _environment, _accessToken);
-                                            sourcePageItem.DataSources.RemoveAll(x => rteRenderings.Any(y => x.ID.Equals(y.DatasourceID, StringComparison.OrdinalIgnoreCase)));
+                                        if (xmcTemplateId.Equals(XMC_Page_Template_Constants.Teaching_Sheets))
+                                        {                                            
+                                            await TeachingSheetMigrationService.ProcessAsync(rteRenderings, sourcePageItem, dataItemId, matchedMapping.NEWURLPATH, _environment, _accessToken);
+                                            sourcePageItem = RemoveRenderingDatasources(sourcePageItem, sourcePageItem.Renderings, XP_RenderingName_Constants.RichText);
+                                            sourcePageItem = RemoveRenderingDatasources(sourcePageItem, sourcePageItem.Renderings, XP_RenderingName_Constants.Multi_Button_Callout);                                            
                                         }
 
-                                        if (XMC_LOCATION_PAGE_TEMPLATES.Contains(matchedMapping.PAGETEMPLATEID))
+                                        if (XMC_Page_Template_Constants.Location_Pages.Contains(matchedMapping.PAGETEMPLATEID))
                                         {
                                             var pageItem = database.GetItem(sourcePageItem.ItemID);
 
@@ -344,27 +318,27 @@ namespace CWXPTool.Controllers
                                             {
                                                 var localDatasourceItems = pageItem.Axes.GetDescendants()
                                                 .Where(descendant =>
-                                                    descendant.TemplateID.ToString().Equals(OFFICE_HOURS_FOLDER_TEMPLATEID, StringComparison.OrdinalIgnoreCase) ||
-                                                    descendant.Parent?.TemplateID.ToString().Equals(OFFICE_HOURS_FOLDER_TEMPLATEID, StringComparison.OrdinalIgnoreCase) == true ||
-                                                    descendant.TemplateID.ToString().Equals(PHONE_HOURS_FOLDER_TEMPLATEID, StringComparison.OrdinalIgnoreCase) ||
-                                                    descendant.Parent?.TemplateID.ToString().Equals(PHONE_HOURS_FOLDER_TEMPLATEID, StringComparison.OrdinalIgnoreCase) == true
+                                                    descendant.TemplateID.ToString().Equals(Constants.OFFICE_HOURS_FOLDER_TEMPLATEID, StringComparison.OrdinalIgnoreCase) ||
+                                                    descendant.Parent?.TemplateID.ToString().Equals(Constants.OFFICE_HOURS_FOLDER_TEMPLATEID, StringComparison.OrdinalIgnoreCase) == true ||
+                                                    descendant.TemplateID.ToString().Equals(Constants.PHONE_HOURS_FOLDER_TEMPLATEID, StringComparison.OrdinalIgnoreCase) ||
+                                                    descendant.Parent?.TemplateID.ToString().Equals(Constants.PHONE_HOURS_FOLDER_TEMPLATEID, StringComparison.OrdinalIgnoreCase) == true
                                                 ).ToArray();
 
                                                 //Office Hours
-                                                await CreateOfficeHoursDatasources(localDatasourceItems, matchedMapping.NEWURLPATH, dataItemId, OFFICE_HOURS_FOLDER_TEMPLATEID);
+                                                await CreateOfficeHoursDatasources(localDatasourceItems, matchedMapping.NEWURLPATH, dataItemId, Constants.OFFICE_HOURS_FOLDER_TEMPLATEID);
                                                 //Phone Hours
-                                                await CreateOfficeHoursDatasources(localDatasourceItems, matchedMapping.NEWURLPATH, dataItemId, PHONE_HOURS_FOLDER_TEMPLATEID);
+                                                await CreateOfficeHoursDatasources(localDatasourceItems, matchedMapping.NEWURLPATH, dataItemId, Constants.PHONE_HOURS_FOLDER_TEMPLATEID);
                                             }
                                         }
 
-                                        var videMainBodyRenderings = sourcePageItem.Renderings.Where(r => r.RenderingName.Contains(XP_VideoMainBody_RENDERING_NAME)).ToList();
+                                        var videMainBodyRenderings = sourcePageItem.Renderings.Where(r => r.RenderingName.Contains(XP_RenderingName_Constants.Video_Main_Body)).ToList();
                                         if(videMainBodyRenderings != null && videMainBodyRenderings.Any())
                                         {
                                             videMainBodyRenderings.RemoveAll(x => string.IsNullOrEmpty(x.DatasourceID));
                                             if(videMainBodyRenderings != null && videMainBodyRenderings.Any())
                                             {
                                                 var datasourceIds = videMainBodyRenderings.Select(x => x.DatasourceID).ToList();
-                                                await CreateTextMediaDatasources(datasourceIds, sourcePageItem, matchedMapping, dataItemId);
+                                                await CreateTextMediaDatasources(datasourceIds, sourcePageItem, matchedMapping, dataItemId);                                                
                                                 sourcePageItem.DataSources.RemoveAll(x => datasourceIds.Any(id => id.Equals(x.ID, StringComparison.OrdinalIgnoreCase)));                                                
                                             }                                            
                                         }                                        
@@ -460,7 +434,7 @@ namespace CWXPTool.Controllers
                             if (existingItem == null)
                             {
                                 var inputItem = XMCItemUtility.GetSitecoreCreateItemInput(itemName,
-                                        XMC_RTE_ITEM_TEMPLATEID, localDataItemId, "text", rteField.Value);
+                                        XMC_Template_Constants.RTE, localDataItemId, "text", rteField.Value);
                                 items.Add(inputItem);
                             }
                         }
@@ -510,7 +484,7 @@ namespace CWXPTool.Controllers
                 var path = $"{pageMapping.NEWURLPATH}/Data/{datasource.Name}";
                 var existingItem = await this.SitecoreGraphQLClient.QuerySingleItemAsync(_environment, _accessToken, path);
                 if (existingItem == null)
-                    await CreateItem(localDataItemId, datasource.Name, XMC_TEXT_MEDIA_TEMPLATEID, fields);
+                    await CreateItem(localDataItemId, datasource.Name, XMC_Template_Constants.Text_Media, fields);
 
                 if(!string.IsNullOrEmpty(richTextAbove))
                 {
@@ -523,7 +497,7 @@ namespace CWXPTool.Controllers
                     path = $"{pageMapping.NEWURLPATH}/Data/{itemName}";
                     existingItem = await this.SitecoreGraphQLClient.QuerySingleItemAsync(_environment, _accessToken, path);
                     if (existingItem == null)
-                        await CreateItem(localDataItemId, itemName, XMC_RTE_ITEM_TEMPLATEID, new List<SitecoreFieldInput>() { field });
+                        await CreateItem(localDataItemId, itemName, XMC_Template_Constants.RTE, new List<SitecoreFieldInput>() { field });
                 }
             }
         }
@@ -593,9 +567,9 @@ namespace CWXPTool.Controllers
                                     //Rest page headline datasources created as RTE in XMC Cloud
                                     if (counter == 0)
                                     {
-                                        if (matchedMapping.PAGETEMPLATEID.Equals(XMC_ConditionTreatment_TEMPLATE))
+                                        if (matchedMapping.PAGETEMPLATEID.Equals(XMC_Page_Template_Constants.Condition_Treatment))
                                             continue;
-                                        if (matchedMapping.PAGETEMPLATEID.Equals(XMC_GeneralT2_TEMPLATE))
+                                        if (matchedMapping.PAGETEMPLATEID.Equals(XMC_Page_Template_Constants.General2))
                                         {
                                             await UpdateGeneralHeaderTitle(matchedMapping, headlineField.Value);
                                             continue;
@@ -606,7 +580,7 @@ namespace CWXPTool.Controllers
                                     if (existingItem == null)
                                     {
                                         var inputItem = XMCItemUtility.GetSitecoreCreateItemInput(datasource.Name,
-                                    XMC_RTE_ITEM_TEMPLATEID, localDataItemId, "text", headlineField.Value);
+                                    XMC_Template_Constants.RTE, localDataItemId, "text", headlineField.Value);
                                         items.Add(inputItem);
                                     }
                                 }
@@ -730,7 +704,7 @@ namespace CWXPTool.Controllers
 
             var title = GetSitecoreFieldInput(sourcePageItem, "DisplayTitle", "Title");            
             var pageHeadLine = GetPageHeadline(sourcePageItem, headlineRenderings);
-            if (pageMapping.PAGETEMPLATEID.Equals(XMC_ConditionTreatment_TEMPLATE))
+            if (pageMapping.PAGETEMPLATEID.Equals(XMC_Page_Template_Constants.Condition_Treatment))
                 title.Value = pageHeadLine;
             if (title != null)
                 fields.Add(title);
@@ -743,7 +717,7 @@ namespace CWXPTool.Controllers
             if (displayContent != null)
                 fields.Add(displayContent);
                                     
-            if (XMC_LOCATION_PAGE_TEMPLATES.Contains(pageMapping.PAGETEMPLATEID))
+            if (XMC_Page_Template_Constants.Location_Pages.Contains(pageMapping.PAGETEMPLATEID))
             {
                 fields.AddRange(GetLocationPageFields(sourcePageItem));
             }
@@ -947,7 +921,19 @@ namespace CWXPTool.Controllers
             return null;
         }
 
-        public static bool IsGuidInput(string input)
+        private static PageDataModel RemoveRenderingDatasources(PageDataModel sourcePageItem, IEnumerable<RenderingInfo> renderings, string renderingName)
+        {
+            if (renderings == null || !renderings.Any()) return sourcePageItem;
+            
+            var filteredRenderings = renderings.Where(rendering => rendering.RenderingName.Contains(renderingName));
+
+            if (filteredRenderings == null || !filteredRenderings.Any()) return sourcePageItem;            
+
+            sourcePageItem.DataSources.RemoveAll(x => filteredRenderings.Any(y => x.ID.Equals(y.DatasourceID, StringComparison.OrdinalIgnoreCase)));            
+
+            return sourcePageItem;
+        }
+        private static bool IsGuidInput(string input)
         {
             if (string.IsNullOrWhiteSpace(input))
                 return false;

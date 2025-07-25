@@ -1,6 +1,7 @@
 ﻿using CWXPMigration.Models;
 using System.Collections.Generic;
 using System.Linq;
+using System.Net;
 using System.Threading.Tasks;
 
 namespace CWXPMigration.Services
@@ -11,8 +12,7 @@ namespace CWXPMigration.Services
         /// Processes Rich Text Renderings and creates/upgrades the Side Navigation links in Sitecore.
         /// </summary>
         Task ProcessAsync(
-            IEnumerable<RenderingInfo> rteRenderings,
-            RenderingInfo publicationInfoRendering,
+            IEnumerable<RenderingInfo> rteRenderings,            
             PageDataModel sourcePageItem,
             string dataItemId,
             string newUrlPath,
@@ -32,8 +32,7 @@ namespace CWXPMigration.Services
 
         /// <inheritdoc />
         public async Task ProcessAsync(
-            IEnumerable<RenderingInfo> rteRenderings,
-            RenderingInfo publicationInfoRendering,
+            IEnumerable<RenderingInfo> rteRenderings,            
             PageDataModel sourcePageItem,
             string dataItemId,
             string newUrlPath,
@@ -42,6 +41,17 @@ namespace CWXPMigration.Services
         {
             _environment = environment;
             _accessToken = accessToken;
+
+            var multiButtonCalloutRendering = sourcePageItem.Renderings.FirstOrDefault(x => x.RenderingName.Contains(XP_RenderingName_Constants.Multi_Button_Callout));
+
+            if (multiButtonCalloutRendering != null)
+            {
+                var multiButtonCalloutDatasource = XMCItemUtility.GetDatasource(sourcePageItem, multiButtonCalloutRendering.DatasourceID);
+
+                if (multiButtonCalloutDatasource != null) {
+                    await CreateInPageBannerItemAsync(newUrlPath, dataItemId, multiButtonCalloutDatasource);
+                }                               
+            }
 
             List<RichTextSection> jumpLinkSections = new List<RichTextSection>();
 
@@ -55,47 +65,58 @@ namespace CWXPMigration.Services
                 if (rteField == null)
                     continue;
 
-                var contents = RichTextSplitter.SplitByH2(rteField.Value);
-                if (contents == null || !contents.Any())
-                    continue;
-
-                jumpLinkSections.AddRange(contents);
-
                 var path = $"{newUrlPath}/Data/{rteDatasource.Name}";
                 var rteDatasourceItem = await this.SitecoreGraphQLClient.QuerySingleItemAsync(_environment, _accessToken, path);
 
                 if (rteDatasourceItem != null)
-                    return;
+                    continue;               
+
+                var contents = RichTextSplitter.SplitByH2(rteField.Value);
+                if (contents == null || !contents.Any())
+                    continue;
+
+                jumpLinkSections.AddRange(contents);                
 
                 var finalHtml = RichTextSplitter.AddIdAttributeToAllH2(rteField.Value);
 
                 var rteInputItem = XMCItemUtility.GetSitecoreCreateItemInput(rteDatasource.Name,
-                    Constants.XMC_RTE_ITEM_TEMPLATEID, dataItemId, "text", finalHtml);
+                    XMC_Template_Constants.RTE, dataItemId, "text", finalHtml);
                 
                 await this.SitecoreGraphQLClient.CreateBulkItemsBatchedAsync(
                     new List<SitecoreCreateItemInput> { rteInputItem }, _environment, _accessToken);
             }
 
-            if (!jumpLinkSections.Any()) return;
-
             var generalHeaderItemId = await GetOrCreateGeneralHeaderItemAsync(newUrlPath, dataItemId);
 
-            if(string.IsNullOrEmpty(generalHeaderItemId)) return;
+            if (string.IsNullOrEmpty(generalHeaderItemId)) return;
 
-            var linkItemIds = await ProcessJumpLinksAsync(jumpLinkSections, newUrlPath, generalHeaderItemId);
+            if (jumpLinkSections.Any())
+            {
+                var linkItemIds = await ProcessJumpLinksAsync(jumpLinkSections, newUrlPath, generalHeaderItemId);
 
-            if(linkItemIds == null || !linkItemIds.Any()) return;
+                if (linkItemIds != null || linkItemIds.Any())
+                {
+                    await UpdateGeneralHeaderAsync(generalHeaderItemId, "cta3", string.Join("|", linkItemIds.Select(x => XMCItemUtility.FormatGuid(x))));
+                }
+            }                                    
 
-            var publicationInfoDatasource = XMCItemUtility.GetDatasource(sourcePageItem, publicationInfoRendering.DatasourceID);
+            var publicationInfoRendering = sourcePageItem.Renderings.FirstOrDefault(x => x.RenderingName.Contains(XP_RenderingName_Constants.Publication_Footer));
 
-            if(publicationInfoDatasource == null) return;
+            if(publicationInfoRendering != null)
+            {
+                var publicationInfoDatasource = XMCItemUtility.GetDatasource(sourcePageItem, publicationInfoRendering.DatasourceID);
 
-            await CreatePublicationInfoItemAsync(newUrlPath, dataItemId, publicationInfoDatasource);
+                if (publicationInfoDatasource != null)
+                {
+                    await CreatePublicationInfoItemAsync(newUrlPath, dataItemId, publicationInfoDatasource);
 
-            var headline = publicationInfoDatasource.Fields?.FirstOrDefault(x => x.Name.Equals("Name"))?.Value ?? string.Empty;
-            var draftNumber = publicationInfoDatasource.Fields?.FirstOrDefault(x => x.Name.Equals("DraftNumber"))?.Value ?? string.Empty;
-            var title = $"{headline} ({draftNumber})";
-            await UpdateGeneralHeaderWithLinksAsync(generalHeaderItemId, linkItemIds, title);
+                    var headline = publicationInfoDatasource.Fields?.FirstOrDefault(x => x.Name.Equals("Headline"))?.Value ?? string.Empty;
+                    var draftNumber = publicationInfoDatasource.Fields?.FirstOrDefault(x => x.Name.Equals("DraftNumber"))?.Value ?? string.Empty;
+                    var title = $"{headline} ({draftNumber})";
+
+                    await UpdateGeneralHeaderAsync(generalHeaderItemId, "title", title);
+                }                
+            }            
         }
 
         #region Private Helpers
@@ -118,7 +139,7 @@ namespace CWXPMigration.Services
                 Language = "en",
                 Parent = dataItemId,
                 Name = "General Header",
-                TemplateId = Constants.GeneralHeaderTemplateID
+                TemplateId = XMC_Template_Constants.General_Header
             };
 
             var createdItems = await this.SitecoreGraphQLClient.CreateBulkItemsBatchedAsync(
@@ -166,7 +187,7 @@ namespace CWXPMigration.Services
             var inputItem = new SitecoreCreateItemInput
             {
                 Name = itemName,
-                TemplateId = Constants.GenericLinkTemplateID,
+                TemplateId = XMC_Template_Constants.Generic_Link,
                 Parent = generalHeaderItemId,
                 Language = "en",
                 Fields = new List<SitecoreFieldInput>
@@ -214,7 +235,7 @@ namespace CWXPMigration.Services
             var inputItem = new SitecoreCreateItemInput
             {
                 Name = publicationInfo.Name,
-                TemplateId = Constants.PublicationInfoTemplateID,
+                TemplateId = XMC_Template_Constants.Publication_Info,
                 Parent = dataItemId,
                 Language = "en",
                 Fields = fields
@@ -226,26 +247,50 @@ namespace CWXPMigration.Services
             return createdItems?.FirstOrDefault()?.ItemId;
         }
 
+        private async Task CreateInPageBannerItemAsync(string newUrlPath, string dataItemId, DataSourceDetail multiButtonCallout)
+        {
+
+            var path = $"{newUrlPath}/Data/Alert";
+
+            var pageBannerItem = await this.SitecoreGraphQLClient.QuerySingleItemAsync(_environment, _accessToken, path);
+            if (pageBannerItem != null)
+                return;
+
+            var fields = new List<SitecoreFieldInput>();
+            var heading = XMCItemUtility.GetSitecoreFieldInput(multiButtonCallout, "Heading", "heading");
+            if (heading != null)
+                fields.Add(heading);
+            var bodyText = XMCItemUtility.GetSitecoreFieldInput(multiButtonCallout, "Description", "bodyText");
+            if (bodyText != null)
+                fields.Add(bodyText);
+            
+            var inputItem = new SitecoreCreateItemInput
+            {
+                Name = "Alert",
+                TemplateId = XMC_Template_Constants.In_Page_Banner,
+                Parent = dataItemId,
+                Language = "en",
+                Fields = fields
+            };
+
+            await this.SitecoreGraphQLClient.CreateBulkItemsBatchedAsync(
+                new List<SitecoreCreateItemInput> { inputItem }, _environment, _accessToken);            
+        }
+
         /// <summary>
         /// Updates the General Header item's CTA3 field with a pipe-separated list of link item IDs.
         /// </summary>
-        private async Task UpdateGeneralHeaderWithLinksAsync(string generalHeaderItemId, List<string> linkItemIds,
-            string title)
+        private async Task UpdateGeneralHeaderAsync(string itemId, string fieldName, string value)
         {
             var updateItem = new SitecoreUpdateItemInput
             {
-                ItemId = generalHeaderItemId,
+                ItemId = itemId,
                 Fields = new List<SitecoreFieldInput>
                 {
                     new SitecoreFieldInput
                     {
-                        Name = "cta3",
-                        Value = string.Join("|", linkItemIds)
-                    },
-                    new SitecoreFieldInput
-                    {
-                        Name = "title",
-                        Value = title
+                        Name = fieldName,
+                        Value = value
                     }
                 }
             };
@@ -259,7 +304,8 @@ namespace CWXPMigration.Services
         /// </summary>
         private string BuildAnchorLink(string title, int index)
         {
-            return $"<link text=\"{title}\" linktype=\"anchor\" url=\"keypoint{index}\" anchor=\"keypoint{index}\" title=\"\" class=\"\" />";
+            string safeTitle = WebUtility.HtmlEncode(title); // encodes &, <, >, ", '
+            return $"<link text=\"{safeTitle}\" linktype=\"anchor\" url=\"keypoint{index}\" anchor=\"keypoint{index}\" title=\"\" class=\"\" />";
         }        
 
         #endregion
