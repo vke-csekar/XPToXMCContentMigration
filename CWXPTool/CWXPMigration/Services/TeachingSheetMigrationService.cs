@@ -139,7 +139,15 @@ namespace CWXPMigration.Services
                 Language = "en",
                 Parent = dataItemId,
                 Name = "General Header",
-                TemplateId = XMC_Template_Constants.General_Header
+                TemplateId = XMC_Template_Constants.General_Header,
+                Fields = new List<SitecoreFieldInput>()
+                {
+                    new SitecoreFieldInput()
+                    {
+                        Name = "cta3Variant",
+                        Value = "JumpLink",
+                    }
+                }
             };
 
             var createdItems = await this.SitecoreGraphQLClient.CreateBulkItemsBatchedAsync(
