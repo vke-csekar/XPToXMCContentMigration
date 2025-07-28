@@ -11,7 +11,8 @@
         public const string Generic_Link = "{B7E9466D-8242-4EFC-A137-C21C9E181ECB}";
         public const string Publication_Info = "{34702083-3088-4312-8546-1A90D8AE9FD6}";
         public const string SideNav = "{A3DC84B7-CDF1-468C-92EF-C33DC4311075}";
-        public const string SideNavSection = "{72BB023A-CE3E-4523-B4AA-16E54561D8D4}";
+        public const string SideNavSection = "{72BB023A-CE3E-4523-B4AA-16E54561D8D4}";        
+        public const string UserScriptsFoldlder = "{2BA6ED28-E859-4B24-9ECD-4C5D49B2C947}";
     }
 
     public static class XMC_Page_Template_Constants
@@ -58,6 +59,7 @@
         public const string Publication_Footer = "Publication Footer";
         public const string Video_Main_Body = "Video Main Body";
         public const string Multi_Button_Callout = "Multi Button Callout";
+        public const string Script = "Script";
 
         public static readonly string[] XP_RENDERING_NAMES =
         {
@@ -67,7 +69,8 @@
             RichText_Plain,
             Publication_Footer,
             Video_Main_Body,
-            Multi_Button_Callout
+            Multi_Button_Callout,
+            Script
         };
     }
 
@@ -77,10 +80,12 @@
         public const string AuthUrl = "https://auth.sitecorecloud.io/oauth/token";
         public const string Audience = "https://api.sitecorecloud.io";
 
-        public const string SITECORE_XMC_PREFIX = "/sitecore/content/CW/childrens/Home/";
+        public const string SITECORE_XMC_ROOT_PATH = "/sitecore/content/CW/childrens";        
 
         public const string OFFICE_HOURS_FOLDER_TEMPLATEID = "{87409A28-AD55-4E80-B814-DAE11AF579B0}";
         public const string PHONE_HOURS_FOLDER_TEMPLATEID = "{BE526692-1363-4CA1-905B-4BDD7E72244E}";
+
+        public const string UserScriptItem = "{19D4AA2D-9190-414C-A88C-CB513DA967AA}";
 
         public const string SITECORE_XP_PRFIX = "/sitecore/content/CHW/Home/";
         public const string XP_MIGRATION_LOG_JSON_PATH = "F:\\Migration\\CWXPMigrationContent.json";

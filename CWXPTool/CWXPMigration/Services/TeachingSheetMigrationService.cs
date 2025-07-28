@@ -32,7 +32,7 @@ namespace CWXPMigration.Services
 
         /// <inheritdoc />
         public async Task ProcessAsync(
-            IEnumerable<RenderingInfo> rteRenderings,            
+            IEnumerable<RenderingInfo> xpRteRenderings,            
             PageDataModel sourcePageItem,
             string dataItemId,
             string newUrlPath,
@@ -42,48 +42,38 @@ namespace CWXPMigration.Services
             _environment = environment;
             _accessToken = accessToken;
 
-            var multiButtonCalloutRendering = sourcePageItem.Renderings.FirstOrDefault(x => x.RenderingName.Contains(XP_RenderingName_Constants.Multi_Button_Callout));
-
-            if (multiButtonCalloutRendering != null)
-            {
-                var multiButtonCalloutDatasource = XMCItemUtility.GetDatasource(sourcePageItem, multiButtonCalloutRendering.DatasourceID);
-
-                if (multiButtonCalloutDatasource != null) {
-                    await CreateInPageBannerItemAsync(newUrlPath, dataItemId, multiButtonCalloutDatasource);
-                }                               
-            }
+            await CreateInPageBannerDatasources(newUrlPath, dataItemId, sourcePageItem);
 
             List<RichTextSection> jumpLinkSections = new List<RichTextSection>();
 
-            foreach (var rteRendering in rteRenderings)
+            foreach (var xpRteRendering in xpRteRenderings)
             {
-                var rteDatasource = XMCItemUtility.GetDatasource(sourcePageItem, rteRendering.DatasourceID);
-                if (rteDatasource == null)
-                    continue;
+                var xpRteDatasource = XMCItemUtility.GetDatasource(sourcePageItem, xpRteRendering.DatasourceID);
 
-                var rteField = XMCItemUtility.GetRichTextField(rteDatasource);
-                if (rteField == null)
-                    continue;
+                if (xpRteDatasource != null) {
+                    var xpRteField = XMCItemUtility.GetRichTextField(xpRteDatasource);
+                    if (xpRteField != null)
+                    {
+                        var path = $"{newUrlPath}/Data/{xpRteDatasource.Name}";
+                        var xmcRteDatasource = await this.SitecoreGraphQLClient.QuerySingleItemAsync(_environment, _accessToken, path);
+                        if (xmcRteDatasource == null)
+                        {
+                            var contents = RichTextSplitter.SplitByH2(xpRteField.Value);
+                            if (contents != null && contents.Any())
+                            {
+                                jumpLinkSections.AddRange(contents); 
+                                
+                                var finalHtml = RichTextSplitter.AddIdAttributeToAllH2(xpRteField.Value);
 
-                var path = $"{newUrlPath}/Data/{rteDatasource.Name}";
-                var rteDatasourceItem = await this.SitecoreGraphQLClient.QuerySingleItemAsync(_environment, _accessToken, path);
+                                var rteInputItem = XMCItemUtility.GetSitecoreCreateItemInput(xpRteDatasource.Name,
+                                    XMC_Template_Constants.RTE, dataItemId, "text", finalHtml);
 
-                if (rteDatasourceItem != null)
-                    continue;               
-
-                var contents = RichTextSplitter.SplitByH2(rteField.Value);
-                if (contents == null || !contents.Any())
-                    continue;
-
-                jumpLinkSections.AddRange(contents);                
-
-                var finalHtml = RichTextSplitter.AddIdAttributeToAllH2(rteField.Value);
-
-                var rteInputItem = XMCItemUtility.GetSitecoreCreateItemInput(rteDatasource.Name,
-                    XMC_Template_Constants.RTE, dataItemId, "text", finalHtml);
-                
-                await this.SitecoreGraphQLClient.CreateBulkItemsBatchedAsync(
-                    new List<SitecoreCreateItemInput> { rteInputItem }, _environment, _accessToken);
+                                await this.SitecoreGraphQLClient.CreateBulkItemsBatchedAsync(
+                                    new List<SitecoreCreateItemInput> { rteInputItem }, _environment, _accessToken);
+                            }
+                        }
+                    }
+                }                
             }
 
             var generalHeaderItemId = await GetOrCreateGeneralHeaderItemAsync(newUrlPath, dataItemId);
@@ -98,25 +88,9 @@ namespace CWXPMigration.Services
                 {
                     await UpdateGeneralHeaderAsync(generalHeaderItemId, "cta3", string.Join("|", linkItemIds.Select(x => XMCItemUtility.FormatGuid(x))));
                 }
-            }                                    
+            }
 
-            var publicationInfoRendering = sourcePageItem.Renderings.FirstOrDefault(x => x.RenderingName.Contains(XP_RenderingName_Constants.Publication_Footer));
-
-            if(publicationInfoRendering != null)
-            {
-                var publicationInfoDatasource = XMCItemUtility.GetDatasource(sourcePageItem, publicationInfoRendering.DatasourceID);
-
-                if (publicationInfoDatasource != null)
-                {
-                    await CreatePublicationInfoItemAsync(newUrlPath, dataItemId, publicationInfoDatasource);
-
-                    var headline = publicationInfoDatasource.Fields?.FirstOrDefault(x => x.Name.Equals("Headline"))?.Value ?? string.Empty;
-                    var draftNumber = publicationInfoDatasource.Fields?.FirstOrDefault(x => x.Name.Equals("DraftNumber"))?.Value ?? string.Empty;
-                    var title = $"{headline} ({draftNumber})";
-
-                    await UpdateGeneralHeaderAsync(generalHeaderItemId, "title", title);
-                }                
-            }            
+            await CreatePublicationInfoDatasources(newUrlPath, dataItemId, generalHeaderItemId, sourcePageItem);            
         }
 
         #region Private Helpers
@@ -212,78 +186,7 @@ namespace CWXPMigration.Services
                 new List<SitecoreCreateItemInput> { inputItem }, _environment, _accessToken);
 
             return createdItems?.FirstOrDefault()?.ItemId;
-        }
-
-        /// <summary>
-        /// Creates a Publication Info Datasource
-        /// </summary>
-        private async Task<string> CreatePublicationInfoItemAsync(string newUrlPath, string dataItemId, DataSourceDetail publicationInfo)
-        {
-
-            var path = $"{newUrlPath}/Data/General Header/{publicationInfo.Name}";
-            
-            var publicationInfoItem = await this.SitecoreGraphQLClient.QuerySingleItemAsync(_environment, _accessToken, path);
-            if (publicationInfoItem != null)
-                return publicationInfoItem.ItemId;
-
-            var fields = new List<SitecoreFieldInput>();
-            var draftNumber = XMCItemUtility.GetSitecoreFieldInput(publicationInfo, "DraftNumber", "draftNumber");
-            if (draftNumber != null)
-                fields.Add(draftNumber);
-            var displayCWApprovalSeal = XMCItemUtility.GetSitecoreFieldInput(publicationInfo, "DisplayCWApprovalSeal", "displayCWApprovalSeal");
-            if (displayCWApprovalSeal != null)
-                fields.Add(displayCWApprovalSeal);
-            var documentDate = XMCItemUtility.GetSitecoreFieldInput(publicationInfo, "DocumentDate", "documentDate");
-            if (documentDate != null)
-                fields.Add(documentDate);
-            var nextReviewDate = XMCItemUtility.GetSitecoreFieldInput(publicationInfo, "NextReviewDate", "nextReviewDate");
-            if (nextReviewDate != null)
-                fields.Add(nextReviewDate);
-
-            var inputItem = new SitecoreCreateItemInput
-            {
-                Name = publicationInfo.Name,
-                TemplateId = XMC_Template_Constants.Publication_Info,
-                Parent = dataItemId,
-                Language = "en",
-                Fields = fields
-            };
-
-            var createdItems = await this.SitecoreGraphQLClient.CreateBulkItemsBatchedAsync(
-                new List<SitecoreCreateItemInput> { inputItem }, _environment, _accessToken);
-
-            return createdItems?.FirstOrDefault()?.ItemId;
-        }
-
-        private async Task CreateInPageBannerItemAsync(string newUrlPath, string dataItemId, DataSourceDetail multiButtonCallout)
-        {
-
-            var path = $"{newUrlPath}/Data/Alert";
-
-            var pageBannerItem = await this.SitecoreGraphQLClient.QuerySingleItemAsync(_environment, _accessToken, path);
-            if (pageBannerItem != null)
-                return;
-
-            var fields = new List<SitecoreFieldInput>();
-            var heading = XMCItemUtility.GetSitecoreFieldInput(multiButtonCallout, "Heading", "heading");
-            if (heading != null)
-                fields.Add(heading);
-            var bodyText = XMCItemUtility.GetSitecoreFieldInput(multiButtonCallout, "Description", "bodyText");
-            if (bodyText != null)
-                fields.Add(bodyText);
-            
-            var inputItem = new SitecoreCreateItemInput
-            {
-                Name = "Alert",
-                TemplateId = XMC_Template_Constants.In_Page_Banner,
-                Parent = dataItemId,
-                Language = "en",
-                Fields = fields
-            };
-
-            await this.SitecoreGraphQLClient.CreateBulkItemsBatchedAsync(
-                new List<SitecoreCreateItemInput> { inputItem }, _environment, _accessToken);            
-        }
+        }       
 
         /// <summary>
         /// Updates the General Header item's CTA3 field with a pipe-separated list of link item IDs.
@@ -314,7 +217,137 @@ namespace CWXPMigration.Services
         {
             string safeTitle = WebUtility.HtmlEncode(title); // encodes &, <, >, ", '
             return $"<link text=\"{safeTitle}\" linktype=\"anchor\" url=\"keypoint{index}\" anchor=\"keypoint{index}\" title=\"\" class=\"\" />";
-        }        
+        }
+
+        private async Task CreateInPageBannerDatasources(string newUrlPath, string dataItemId, PageDataModel sourcePageItem)
+        {
+            var xpRendering = sourcePageItem.Renderings.FirstOrDefault(x => x.RenderingName.Contains(XP_RenderingName_Constants.Multi_Button_Callout));
+
+            if (xpRendering != null)
+            {
+                var xpDatasource = XMCItemUtility.GetDatasource(sourcePageItem, xpRendering.DatasourceID);
+
+                if (xpDatasource != null)
+                {
+                    var path = $"{newUrlPath}/Data/Alert";
+
+                    var xmcDatasource = await this.SitecoreGraphQLClient.QuerySingleItemAsync(_environment, _accessToken, path);
+                    if (xmcDatasource == null)
+                    {
+                        var fields = new List<SitecoreFieldInput>();
+                        var heading = XMCItemUtility.GetSitecoreFieldInput(xpDatasource, "Heading", "heading");
+                        if (heading != null)
+                            fields.Add(heading);
+                        var bodyText = XMCItemUtility.GetSitecoreFieldInput(xpDatasource, "Description", "bodyText");
+                        if (bodyText != null)
+                            fields.Add(bodyText);
+
+                        var inputItem = new SitecoreCreateItemInput
+                        {
+                            Name = "Alert",
+                            TemplateId = XMC_Template_Constants.In_Page_Banner,
+                            Parent = dataItemId,
+                            Language = "en",
+                            Fields = fields
+                        };
+
+                        await this.SitecoreGraphQLClient.CreateBulkItemsBatchedAsync(
+                            new List<SitecoreCreateItemInput> { inputItem }, _environment, _accessToken);
+                    }                    
+                }
+            }
+        }
+
+        private async Task CreatePublicationInfoDatasources(string newUrlPath, string dataItemId, string generalHeaderItemId, PageDataModel sourcePageItem)
+        {
+            var xpRendering = sourcePageItem.Renderings.FirstOrDefault(x => x.RenderingName.Contains(XP_RenderingName_Constants.Publication_Footer));
+
+            if (xpRendering != null)
+            {
+                var xpDatasource = XMCItemUtility.GetDatasource(sourcePageItem, xpRendering.DatasourceID);
+
+                if (xpDatasource != null)
+                {
+                    var path = $"{newUrlPath}/Data/General Header/{xpDatasource.Name}";
+
+                    var xmcDatasource = await this.SitecoreGraphQLClient.QuerySingleItemAsync(_environment, _accessToken, path);
+                    if (xmcDatasource == null)
+                    {
+                        var fields = new List<SitecoreFieldInput>();
+                        var draftNumberField = XMCItemUtility.GetSitecoreFieldInput(xpDatasource, "DraftNumber", "draftNumber");
+                        if (draftNumberField != null)
+                            fields.Add(draftNumberField);
+                        var displayCWApprovalSeal = XMCItemUtility.GetSitecoreFieldInput(xpDatasource, "DisplayCWApprovalSeal", "displayCWApprovalSeal");
+                        if (displayCWApprovalSeal != null)
+                            fields.Add(displayCWApprovalSeal);
+                        var documentDate = XMCItemUtility.GetSitecoreFieldInput(xpDatasource, "DocumentDate", "documentDate");
+                        if (documentDate != null)
+                            fields.Add(documentDate);
+                        var nextReviewDate = XMCItemUtility.GetSitecoreFieldInput(xpDatasource, "NextReviewDate", "nextReviewDate");
+                        if (nextReviewDate != null)
+                            fields.Add(nextReviewDate);
+
+                        var inputItem = new SitecoreCreateItemInput
+                        {
+                            Name = xpDatasource.Name,
+                            TemplateId = XMC_Template_Constants.Publication_Info,
+                            Parent = dataItemId,
+                            Language = "en",
+                            Fields = fields
+                        };
+
+                        var createdItems = await this.SitecoreGraphQLClient.CreateBulkItemsBatchedAsync(
+                            new List<SitecoreCreateItemInput> { inputItem }, _environment, _accessToken);                        
+                    }                                            
+
+                    var headline = xpDatasource.Fields?.FirstOrDefault(x => x.Name.Equals("Headline"))?.Value ?? string.Empty;
+                    var draftNumber = xpDatasource.Fields?.FirstOrDefault(x => x.Name.Equals("DraftNumber"))?.Value ?? string.Empty;
+                    var title = $"{headline} ({draftNumber})";
+
+                    await UpdateGeneralHeaderAsync(generalHeaderItemId, "title", title);
+                }
+            }
+        }
+
+        private async Task CreateScriptDatasources(string newUrlPath, string dataItemId, PageDataModel sourcePageItem)
+        {
+            var xpRenderings = sourcePageItem.Renderings.Where(x => x.RenderingName.Contains(XP_RenderingName_Constants.Script));
+
+            if (xpRenderings != null && xpRenderings.Any())
+            {
+                var folderPath = $"{newUrlPath}/Data/User Scripts";
+
+                var folderItemId = string.Empty;                
+
+                foreach (var xpRendering in xpRenderings) 
+                {                    
+                    var xpDataSource = XMCItemUtility.GetDatasource(sourcePageItem, xpRendering.DatasourceID);
+                    if (xpDataSource != null)
+                    {
+                        var path = $"{newUrlPath}/Data/User Scripts/{xpDataSource.Name}";
+                        var xmcDatasource = await this.SitecoreGraphQLClient.QuerySingleItemAsync(_environment, _accessToken, path);
+                        if (xmcDatasource == null)
+                        {
+                            var fields = new List<SitecoreFieldInput>();
+                            var javaScript = XMCItemUtility.GetSitecoreFieldInput(xpDataSource, "JavaScript", "javaScript");
+                            if (javaScript != null)
+                                fields.Add(javaScript);
+                            var inputItem = new SitecoreCreateItemInput
+                            {
+                                Language = "en",
+                                Parent = folderItemId,
+                                Name = xpDataSource.Name,
+                                TemplateId = Constants.UserScriptItem,
+                                Fields = fields
+                            };
+
+                            var createdItems = await this.SitecoreGraphQLClient.CreateBulkItemsBatchedAsync(
+                                new List<SitecoreCreateItemInput> { inputItem }, _environment, _accessToken);
+                        }
+                    }
+                }                
+            }
+        }
 
         #endregion
     }

@@ -126,7 +126,7 @@ namespace CWXPTool.Controllers
                     // Handles NEWURLPATH (with prefix).
                     // The NEWURLPATH value from Excel contains a partial path of Sitecore item; this appends XMC root paths.
                     // Cleans the URL by removing any encoded or unwanted special characters.
-                    x.NEWURLPATH = GetSitecorePathFromUrl(x.NEWURLPATH, x.PAGETEMPLATEID, Constants.SITECORE_XMC_PREFIX);
+                    x.NEWURLPATH = GetSitecorePathFromUrl(x.NEWURLPATH, x.PAGETEMPLATEID, Constants.SITECORE_XMC_ROOT_PATH + "/Home/");
                     Sitecore.Diagnostics.Log.Info("NEWURLPATH: " + x.NEWURLPATH, this);
                 });
             }
