@@ -1,8 +1,39 @@
 ﻿using Sitecore.Data;
+using System;
 using System.Collections.Generic;
 
 namespace CWXPMigration.Models
 {
+    public class TemplateFieldMapping
+    {
+        public string TemplateId { get; set; }            // XP Template ID
+        public string XMTemplateId { get; set; }          // XM Cloud Template ID
+        public List<FieldMapping> FieldMappings { get; set; } = new List<FieldMapping>();
+    }
+    public class FieldMapping
+    {
+        public string XPField { get; set; }         // Field name in XP
+        public string XMField { get; set; }         // Field name in XM Cloud
+        public string XPType { get; set; }           // Optional: type like "Rich Text", "Single-Line Text"
+    }
+    public class TemplateFieldModel
+    {
+        public string Name { get; set; }
+        public string Type { get; set; }
+    }
+    public class TemplateSummaryModel
+    {
+        public string TemplateId { get; set; }
+        public string TemplateName { get; set; }
+        public List<TemplateFieldModel> Fields { get; set; }
+    }
+    public class SyncContentResponse
+    {
+        public bool Success { get; set; } = true;
+        public string SyncedItemPath { get; set; }
+        public List<string> Errors { get; set; } = new List<string>();
+        public string Message { get; set; }
+    }
     public class RenderingInfo
     {
         public string RenderingName { get; set; }
@@ -31,6 +62,7 @@ namespace CWXPMigration.Models
     public class ContentMigrationModel
     {
         public string ItemPath { get; set; }
+        public string XMCItemPath { get; set; }
         public string Environment { get; set; }
         public bool Reimport { get; set; }
         public List<PageDataModel> Items { get; set; }
@@ -46,6 +78,7 @@ namespace CWXPMigration.Models
     public class PageDataModel
     {
         public ID ItemID { get; set; }
+        public ID TemplateID { get; set; }
         public string Page { get; set; }
         public List<XPField> Fields { get; set; } = new List<XPField>();
         public List<RenderingInfo> Renderings { get; set; } = new List<RenderingInfo>();

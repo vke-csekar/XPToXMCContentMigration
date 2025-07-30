@@ -74,6 +74,15 @@
         };
     }
 
+    public class XP_Datasource_Constants
+    {
+        public const string StoryTages = "/sitecore/content/CHW/Content/Page Content/News Hub/Story Tags";
+    }
+
+    public class XMC_Datasource_Constants
+    {
+        public const string StoryTages = "/sitecore/content/CW/childrens/Data/Blog/Tags";
+    }
 
     public static class Constants
     {

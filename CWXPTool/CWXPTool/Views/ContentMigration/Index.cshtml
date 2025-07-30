@@ -1,90 +1,307 @@
 ﻿@model CWXPMigration.Models.ContentMigrationModel
 
-@using (Html.BeginForm("Index", "ContentMigration", FormMethod.Post))
-{
-    <label>Enter Sitecore Item Path Or ID:</label>
-    <input type="text" name="itemPath" value="@Model.ItemPath" style="width:400px;" />
+<form method="post">
+    <div class="container min-vh-100 d-flex align-items-center justify-content-center">
+        <div class="w-100">
+            <div class="row justify-content-center">
+                <div class="col-lg-6 col-md-8 col-sm-10">
 
-    <br />
-    <br />
+                    <div class="card shadow-sm rounded p-4">
+                        <h4 class="mb-4 text-center">Content Migration Tool</h4>
 
-    <label>Select Environment:</label>
-    <select name="environment" style="width:200px;">
-        <option value="DEV" @(Model.Environment == "DEV" ? "selected" : "")>DEV</option>
-        <option value="UAT" @(Model.Environment == "UAT" ? "selected" : "")>UAT</option>
-        <option value="PROD" @(Model.Environment == "PROD" ? "selected" : "")>PROD</option>
-    </select>
+                        <div class="mb-3">
+                            <label for="itemPath" class="form-label">Sitecore Item Path or ID *</label>
+                            <input type="text" id="itemPath" name="itemPath" value="@Model.ItemPath" class="form-control" placeholder="/sitecore/content/..." required />
+                        </div>
 
-    <br />
-    <br />
+                        <div class="mb-3">
+                            <label for="xmcItemPath" class="form-label">Sitecore XMC Item Path</label>
+                            <span class="form-text text-muted">
+                                Use this only for fully migrated pages such as Blogs, Providers, and Medical Professionals, etc.
+                            </span>
+                            <input type="text" id="xmcItemPath" name="xmcItemPath" value="@Model.XMCItemPath" class="form-control" placeholder="/sitecore/content/..." />
+                        </div>
 
-    <label>
-        <input type="checkbox" name="reimport" @(Model.Reimport ? "checked=\"checked\"" : "") />
-        Reimport Pages and Data Sources
-    </label>
+                        <div class="form-check mb-3">
+                            <input class="form-check-input" type="checkbox" id="createPages" name="createPages">
+                            <label class="form-check-label" for="createPages">
+                                Create Pages During Sync
+                            </label>
+                        </div>
 
-    <br />
-    <br />
+                        <div class="form-check mb-3">
+                            <input class="form-check-input" type="checkbox" id="syncComponents" name="syncComponents">
+                            <label class="form-check-label" for="syncComponents">
+                                Sync Components
+                            </label>
+                        </div>
 
-    <button type="submit">Submit</button>
-}
+                        <div class="d-grid gap-2 mb-4">
+                            <button type="button" class="btn btn-primary" id="getFieldsBtn">Get Templates</button>
+                        </div>
 
+                        <div id="templateDropdownContainer" class="mb-4" style="display:none;">
+                            <label for="templateSelector" class="form-label">Select Templates</label>
+                            <select id="templateSelector" class="form-control" multiple></select>
+                        </div>
 
-@if (Model.Items != null && Model.Items.Any())
-{
-    foreach (var model in Model.Items)
-    {
-        var path = model.Page;
-        <h2>Page: @path</h2>
-        if (model.Fields.Any())
-        {
-            <h3>Item Fields</h3>
-            <table border="1" cellpadding="5" cellspacing="0">
-                <tr><th>Field Name</th><th>Value</th><th>Type</th></tr>
-                @foreach (var field in model.Fields)
-                {
-                    <tr>
-                        <td>@field.Name</td>
-                        <td>@Html.Raw(field.Value)</td>
-                        <td>@Html.Raw(field.Type)</td>
-                    </tr>
-                }
-            </table>
-        }
-        if (model.Renderings.Any())
-        {
-            <h3>Renderings on Page</h3>
-            <table border="1" cellpadding="5" cellspacing="0">
-                <tr><th>Rendering ID</th><th>Data Source ID</th></tr>
-                @foreach (var r in model.Renderings)
-                {
-                    <tr>
-                        <td>@r.RenderingName</td>
-                        <td>@r.DatasourceID</td>
-                    </tr>
-                }
-            </table>
-        }
-        if (model.DataSources.Any())
-        {
-            <h3>Data Source Items</h3>
-            foreach (var ds in model.DataSources)
-            {
-                <h4>@ds.Path (@ds.ID)</h4>
-                <table border="1" cellpadding="5" cellspacing="0">
-                    <tr><th>Field Name</th><th>Value</th><th>Type</th></tr>
-                    @foreach (var field in ds.Fields)
-                    {
-                        <tr>
-                            <td>@field.Name</td>
-                            <td>@Html.Raw(field.Value)</td>
-                            <td>@Html.Raw(field.Type)</td>
-                        </tr>
-                    }
-                </table>
-                <br />
-            }
-        }
+                        <div id="templateFieldsContainer" class="mb-4"></div>
+
+                        <input type="hidden" id="mappingSelections" name="mappingSelections" />
+
+                        <div class="mb-3">
+                            <label for="environment" class="form-label">XM Cloud Environment *</label>
+                            <select id="environment" name="environment" class="form-select" required>
+                                <option value="DEV" @(Model.Environment == "DEV" ? "selected" : "")>DEV</option>
+                                <option value="UAT" @(Model.Environment == "UAT" ? "selected" : "")>UAT</option>
+                                <option value="PROD" @(Model.Environment == "PROD" ? "selected" : "")>PROD</option>
+                            </select>
+                        </div>
+
+                        <div class="d-grid">
+                            <button type="submit" id="startSyncBtn" class="btn btn-success">
+                                <span id="syncBtnText">Start Sync</span>
+                                <span id="syncSpinner" class="spinner-border spinner-border-sm ms-2 d-none" role="status" aria-hidden="true"></span>
+                            </button>
+                        </div>
+
+                        <div id="syncResultContainer" class="mt-4"></div>
+                    </div>
+
+                </div>
+            </div>
+        </div>
+    </div>
+</form>
+
+<style>
+    .accordion-button {
+        font-weight: 500;
+        background-color: #f1f3f5;
     }
 
-}
+    .form-check-label small {
+        font-size: 0.8em;
+        margin-left: 4px;
+    }
+</style>
+
+<script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
+
+<script>
+    let templateMap = {};
+    let templateFieldsMap = {};
+    let xmcTemplates = [
+        {
+            id: "{6DE30456-2D7D-4D28-BF1B-2B2B8AA42E62}",
+            name: "Provider Profile",
+            fields: ["firstName", "middleName", "videoID", "positionTitles", "publications", "awards", "epicPhysicianID", "phone",
+                "lastName", "displayInPhysicianListing", "photo", "providerID", "certifications"     ]
+        }
+    ];
+
+    $(document).ready(function () {
+        $('#getFieldsBtn').on('click', function () {
+            const parentPath = $('input[name="itemPath"]').val().trim();
+            if (!parentPath) {
+                alert("Please enter a valid parent path.");
+                return;
+            }
+
+            $.ajax({
+                url: '@Url.Action("GetTemplatesUnderPath", "ContentMigration")',
+                type: 'POST',
+                data: { parentPath },
+                success: function (templates) {
+                    if (!templates || templates.length === 0) {
+                        $('#templateDropdownContainer').hide();
+                        $('#templateFieldsContainer').html('<p class="text-danger">No templates found under this path.</p>');
+                        return;
+                    }
+
+                    templateMap = {};
+                    templateFieldsMap = {};
+                    const $select = $('#templateSelector').empty();
+                    templates.forEach(t => {
+                        templateMap[t.TemplateId] = t.TemplateName;
+                        templateFieldsMap[t.TemplateId] = t.Fields || [];
+                        $select.append(`<option value="${t.TemplateId}">${t.TemplateName}</option>`);
+                    });
+
+                    $('#templateDropdownContainer').show();
+
+                    $select.select2({
+                        placeholder: 'Select templates...',
+                        width: 'resolve'
+                    }).trigger('change');
+                },
+                error: function () {
+                    $('#templateFieldsContainer').html('<p class="text-danger">Error loading templates.</p>');
+                }
+            });
+        });
+
+        $('#templateSelector').on('change', function () {
+            const selectedTemplates = $(this).val();
+            const $container = $('#templateFieldsContainer').empty();
+
+            if (!selectedTemplates || selectedTemplates.length === 0) return;
+
+            selectedTemplates.forEach(templateId => {
+                const templateName = templateMap[templateId];
+                const fields = templateFieldsMap[templateId] || [];
+
+                const $section = $('<div class="mb-4 p-3 bg-light border rounded"></div>');
+                $section.append(`<label class="form-label fw-bold">${templateName} <span class="text-muted">Map to XMC Template</span></label>`);
+
+                // XM Template dropdown
+                const $xmSelect = $(`<select class="form-select mb-2 xm-template-dropdown" data-xptemplateid="${templateId}"></select>`);
+                $xmSelect.append(`<option value="">-- Select XMC Template --</option>`);
+                xmcTemplates.forEach(xm => {
+                    $xmSelect.append(`<option value="${xm.id}">${xm.name}</option>`);
+                });
+                $section.append($xmSelect);
+
+                // XP Fields multi-select
+                $section.append(`<label class="form-label mt-2">Select XP Template Fields</label>`);
+                const $xpFieldSelect = $(`<select multiple class="form-select field-multiselect" data-templateid="${templateId}"></select>`);
+                fields.forEach(field => {
+                    $xpFieldSelect.append(`<option value="${field.Name}||${field.Type}">${field.Name} (${field.Type})</option>`);
+                });
+                $section.append($xpFieldSelect);
+
+                // XM Field Mapping container
+                const $fieldMapContainer = $(`<div class="mt-2 xm-field-map-container" data-xptemplateid="${templateId}"><label class="form-label">Map Fields to XM Cloud</label></div>`);
+                $section.append($fieldMapContainer);
+
+                $container.append($section);
+
+                $xpFieldSelect.select2({ placeholder: "Select fields", width: "resolve" });
+                $xmSelect.select2({ width: "resolve" });
+            });
+        });
+
+        // Listen for XP field changes to show XM field mapping
+        $(document).on('change', '.field-multiselect', function () {
+            const templateId = $(this).data('templateid');
+            const selectedFields = $(this).val() || [];
+            const $mapContainer = $(`.xm-field-map-container[data-xptemplateid="${templateId}"]`);
+            const xmTemplateId = $(`.xm-template-dropdown[data-xptemplateid="${templateId}"]`).val();
+            const xmTemplate = xmcTemplates.find(x => x.id === xmTemplateId);
+
+            $mapContainer.empty().append('<label class="form-label">Map Fields to XMC Cloud</label>');
+
+            if (!xmTemplate || selectedFields.length === 0) return;
+
+            selectedFields.forEach(fieldVal => {
+                const [xpName, xpType] = fieldVal.split('||');
+                const $row = $('<div class="d-flex align-items-center mb-2"></div>');
+                $row.append(`<span class="me-2" style="min-width: 200px;">${xpName} (${xpType})</span>`);
+
+                const $xmFieldSelect = $('<select class="form-select xm-field-select" style="width: 200px;"></select>');
+                $xmFieldSelect.append('<option value="">-- Select XMC Field --</option>');
+                xmTemplate.fields.forEach(f => {
+                    $xmFieldSelect.append(`<option value="${f}">${f}</option>`);
+                });
+
+                $xmFieldSelect.attr('data-xpfield', xpName);
+                $row.append($xmFieldSelect);
+                $mapContainer.append($row);
+
+                $xmFieldSelect.select2({ width: "resolve" });
+            });
+        });
+
+        // Listen for XM template change to refresh mapping
+        $(document).on('change', '.xm-template-dropdown', function () {
+            $(this).closest('.mb-4').find('.field-multiselect').trigger('change');
+        });
+
+        // Serialize data on submit
+        $('form').on('submit', function (e) {
+            e.preventDefault();
+
+            const $btn = $('#startSyncBtn');
+            const $spinner = $('#syncSpinner');
+            const $btnText = $('#syncBtnText');
+
+            // Disable button and show spinner
+            $btn.prop('disabled', true);
+            $spinner.removeClass('d-none');
+            $btnText.text('Syncing...');
+
+            const selectedFieldData = [];
+
+            $('#templateFieldsContainer .field-multiselect').each(function () {
+                const templateId = $(this).data('templateid');
+                const selectedOptions = $(this).val(); // array of value="Name||Type"
+                const xmTemplateId = $(`.xm-template-dropdown[data-xptemplateid="${templateId}"]`).val();
+
+                if (selectedOptions && selectedOptions.length > 0) {
+                    const mappings = [];
+                    selectedOptions.forEach(value => {
+                        const [xpName, xpType] = value.split('||');
+                        const xmField = $(`.xm-field-map-container[data-xptemplateid="${templateId}"] select[data-xpfield="${xpName}"]`).val();
+                        mappings.push({
+                            XPField: xpName,
+                            XPType: xpType,
+                            XMField: xmField
+                        });
+                    });
+
+                    selectedFieldData.push({
+                        TemplateId: templateId,
+                        XMTemplateId: xmTemplateId,
+                        FieldMappings: mappings
+                    });
+                }
+            });
+
+            $('#mappingSelections').val(JSON.stringify(selectedFieldData));
+            console.log('Submitted Mapping:', selectedFieldData); // for debugging
+            //this.submit(); // or manually send via AJAX
+            $.ajax({
+                url: '@Url.Action("SyncContent", "ContentMigration")',
+                type: 'POST',
+                data: {
+                    itemPath: $('input[name="itemPath"]').val().trim(), mappingSelections: selectedFieldData,
+                    environment: $('#environment').val(), xmcItemPath: $('input[name="xmcItemPath"]').val().trim(),
+                    syncComponents: $('#syncComponents').is(':checked'), createPages: $('#createPages').is(':checked')
+                },
+                success: function (response) {
+                    if (!response || response.length === 0) {
+                        $('#syncResultContainer').html('<p class="text-warning">No sync results returned.</p>');
+                        return;
+                    }
+
+                    let html = '<div class="mt-3"><h5>Sync Results:</h5><ul class="list-group">';
+
+                    response.forEach(item => {
+                        html += `<li class="list-group-item">
+            <strong>${item.syncedItemPath}</strong><br>
+            Status: ${item.success ? '<span class="text-success">Success</span>' : '<span class="text-danger">Failed</span>'}
+            ${item.message ? `<br><em>${item.message}</em>` : ''}
+            ${item.errors && item.errors.length ? '<br><strong>Errors:</strong><ul>' + item.errors.map(e => `<li>${e}</li>`).join('') + '</ul>' : ''}
+        </li>`;
+                    });
+
+                    html += '</ul></div>';
+                    $('#syncResultContainer').html(html);
+                },
+                error: function () {
+                    $('#templateFieldsContainer').html('<p class="text-danger">Error loading templates.</p>');
+                },
+                complete: function () {
+                    // Re-enable button and hide spinner
+                    $btn.prop('disabled', false);
+                    $spinner.addClass('d-none');
+                    $btnText.text('Start Sync');
+                }
+            });
+        });
+    });
+</script>
+
+
