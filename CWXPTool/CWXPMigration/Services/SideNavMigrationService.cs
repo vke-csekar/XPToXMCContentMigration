@@ -42,11 +42,11 @@ namespace CWXPMigration.Services
 
             foreach (var rteRendering in rteRenderings)
             {
-                var rteDatasource = XMCItemUtility.GetDatasource(sourcePageItem, rteRendering.DatasourceID);
+                var rteDatasource = SitecoreUtility.GetDatasource(sourcePageItem, rteRendering.DatasourceID);
                 if (rteDatasource == null)
                     continue;
 
-                var rteField = XMCItemUtility.GetRichTextField(rteDatasource);
+                var rteField = SitecoreUtility.GetRichTextField(rteDatasource);
                 if (rteField == null)
                     continue;
 

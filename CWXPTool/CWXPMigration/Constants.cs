@@ -13,6 +13,10 @@
         public const string SideNav = "{A3DC84B7-CDF1-468C-92EF-C33DC4311075}";
         public const string SideNavSection = "{72BB023A-CE3E-4523-B4AA-16E54561D8D4}";        
         public const string UserScriptsFoldlder = "{2BA6ED28-E859-4B24-9ECD-4C5D49B2C947}";
+        public const string Specialty = "{4600FF49-3190-42A9-A736-289124E9A0A3}";
+        public const string OfficeHoursFolder = "{FED0CCA2-CE0A-4426-84D0-747BC00629D2}";
+        public const string TextLinkList = "{4902A5EC-B0ED-46FC-9919-29D036E505B9}";
+        public const string LinkGroup = "{3DEC66E0-B69B-4808-80BB-6CCEEF96939E}";
     }
 
     public static class XMC_Page_Template_Constants
@@ -42,6 +46,13 @@
             Hospital,
             LocationPage
         };
+
+        public static readonly string[] General_Header_Templates = new[] {
+            Teaching_Sheets,
+            General2
+        };
+
+        public const string BlogDetail = "{1F627E91-79F2-4CE5-A18A-BF33972B2072}";
     }
 
 
@@ -56,7 +67,7 @@
         public const string PageHeadline = "PageHeadline";
         public const string Headline = "Headline";
         public const string RichText_Plain = "RichText Plain";
-        public const string Publication_Footer = "Publication Footer";
+        public const string Publication_Content = "Publication Content";
         public const string Video_Main_Body = "Video Main Body";
         public const string Multi_Button_Callout = "Multi Button Callout";
         public const string Script = "Script";
@@ -67,7 +78,7 @@
             Headline,
             RichText,
             RichText_Plain,
-            Publication_Footer,
+            Publication_Content,
             Video_Main_Body,
             Multi_Button_Callout,
             Script
@@ -76,12 +87,14 @@
 
     public class XP_Datasource_Constants
     {
-        public const string StoryTages = "/sitecore/content/CHW/Content/Page Content/News Hub/Story Tags";
+        public const string StoryTags = "/sitecore/content/CHW/Content/Page Content/News Hub/Story Tags";
+        public const string Specialties = "/sitecore/content/CHW/Content/Global Content/MDStaff/Taxonomies/Specialties";
     }
 
     public class XMC_Datasource_Constants
     {
-        public const string StoryTages = "/sitecore/content/CW/childrens/Data/Blog/Tags";
+        public const string StoryTags = "/sitecore/content/CW/childrens/Data/Blog/Tags";
+        public const string Specialties = "/sitecore/content/CW/childrens/Settings/MDStaff/Specialties";
     }
 
     public static class Constants
@@ -91,8 +104,7 @@
 
         public const string SITECORE_XMC_ROOT_PATH = "/sitecore/content/CW/childrens";        
 
-        public const string OFFICE_HOURS_FOLDER_TEMPLATEID = "{87409A28-AD55-4E80-B814-DAE11AF579B0}";
-        public const string PHONE_HOURS_FOLDER_TEMPLATEID = "{BE526692-1363-4CA1-905B-4BDD7E72244E}";
+        public const string OFFICE_HOURS_Details_FOLDER_TEMPLATEID = "{87409A28-AD55-4E80-B814-DAE11AF579B0}";        
 
         public const string UserScriptItem = "{19D4AA2D-9190-414C-A88C-CB513DA967AA}";
 

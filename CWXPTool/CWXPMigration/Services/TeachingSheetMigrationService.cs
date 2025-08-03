@@ -1,4 +1,8 @@
 ﻿using CWXPMigration.Models;
+using JSNLog.Infrastructure;
+using Newtonsoft.Json.Linq;
+using Sitecore.Mvc.Names;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Net;
@@ -17,7 +21,9 @@ namespace CWXPMigration.Services
             string dataItemId,
             string newUrlPath,
             string environment,
-            string accessToken);
+            string accessToken,
+            string generalHeaderItemId);
+        Task<string> GetOrCreateGeneralHeaderItemAsync(string newUrlPath, string dataItemId, string environment, string accessToken);
     }
 
     public class TeachingSheetMigrationService : BaseMigrationService, ITeachingSheetMigrationService
@@ -37,7 +43,8 @@ namespace CWXPMigration.Services
             string dataItemId,
             string newUrlPath,
             string environment,
-            string accessToken)
+            string accessToken,
+            string generalHeaderItemId)
         {
             _environment = environment;
             _accessToken = accessToken;
@@ -48,24 +55,22 @@ namespace CWXPMigration.Services
 
             foreach (var xpRteRendering in xpRteRenderings)
             {
-                var xpRteDatasource = XMCItemUtility.GetDatasource(sourcePageItem, xpRteRendering.DatasourceID);
+                var xpRteDatasource = SitecoreUtility.GetDatasource(sourcePageItem, xpRteRendering.DatasourceID);
 
                 if (xpRteDatasource != null) {
-                    var xpRteField = XMCItemUtility.GetRichTextField(xpRteDatasource);
+                    var xpRteField = SitecoreUtility.GetRichTextField(xpRteDatasource);
                     if (xpRteField != null)
                     {
                         var path = $"{newUrlPath}/Data/{xpRteDatasource.Name}";
                         var xmcRteDatasource = await this.SitecoreGraphQLClient.QuerySingleItemAsync(_environment, _accessToken, path);
-                        if (xmcRteDatasource == null)
+                        var contents = RichTextSplitter.SplitByH2(xpRteField.Value);
+                        if (contents != null && contents.Any())
                         {
-                            var contents = RichTextSplitter.SplitByH2(xpRteField.Value);
-                            if (contents != null && contents.Any())
+                            jumpLinkSections.AddRange(contents);
+                            var finalHtml = RichTextSplitter.AddIdAttributeToAllH2(xpRteField.Value);
+                            if (xmcRteDatasource == null)
                             {
-                                jumpLinkSections.AddRange(contents); 
-                                
-                                var finalHtml = RichTextSplitter.AddIdAttributeToAllH2(xpRteField.Value);
-
-                                var rteInputItem = XMCItemUtility.GetSitecoreCreateItemInput(xpRteDatasource.Name,
+                                var rteInputItem = SitecoreUtility.GetSitecoreCreateItemInput(xpRteDatasource.Name,
                                     XMC_Template_Constants.RTE, dataItemId, "text", finalHtml);
 
                                 await this.SitecoreGraphQLClient.CreateBulkItemsBatchedAsync(
@@ -74,23 +79,42 @@ namespace CWXPMigration.Services
                         }
                     }
                 }                
-            }
-
-            var generalHeaderItemId = await GetOrCreateGeneralHeaderItemAsync(newUrlPath, dataItemId);
+            }                        
 
             if (string.IsNullOrEmpty(generalHeaderItemId)) return;
 
+            var fields = new List<SitecoreFieldInput>();
+
+            fields.Add(new SitecoreFieldInput()
+            {
+                Name = "cta3Variant",
+                Value = "JumpLink",
+            });            
+
             if (jumpLinkSections.Any())
             {
-                var linkItemIds = await ProcessJumpLinksAsync(jumpLinkSections, newUrlPath, generalHeaderItemId);
-
-                if (linkItemIds != null || linkItemIds.Any())
+                jumpLinkSections = jumpLinkSections.Where(l => !string.IsNullOrEmpty(l.Title))?.ToList();
+                if (jumpLinkSections != null && jumpLinkSections.Any())
                 {
-                    await UpdateGeneralHeaderAsync(generalHeaderItemId, "cta3", string.Join("|", linkItemIds.Select(x => XMCItemUtility.FormatGuid(x))));
+                    var linkItemIds = await ProcessJumpLinksAsync(jumpLinkSections, newUrlPath, generalHeaderItemId);
+
+                    if (linkItemIds != null || linkItemIds.Any())
+                    {
+                        fields.Add(new SitecoreFieldInput()
+                        {
+                            Name = "cta3",
+                            Value = string.Join("|", linkItemIds.Select(x => SitecoreUtility.FormatGuid(x))),
+                        });
+                    }
                 }
             }
 
-            await CreatePublicationInfoDatasources(newUrlPath, dataItemId, generalHeaderItemId, sourcePageItem);            
+            var titleField = await CreatePublicationInfoDatasources(newUrlPath, dataItemId, generalHeaderItemId, sourcePageItem);
+            if (titleField != null) {
+                fields.Add(titleField);
+            }
+
+            await UpdateGeneralHeaderAsync(generalHeaderItemId, fields);
         }
 
         #region Private Helpers
@@ -98,8 +122,11 @@ namespace CWXPMigration.Services
         /// <summary>
         /// Retrieves or creates the General Header item under the specified path.
         /// </summary>
-        private async Task<string> GetOrCreateGeneralHeaderItemAsync(string newUrlPath, string dataItemId)
+        public async Task<string> GetOrCreateGeneralHeaderItemAsync(string newUrlPath, string dataItemId, string environment, string accessToken)
         {
+            _environment = environment;
+            _accessToken = accessToken;
+
             var path = $"{newUrlPath}/Data/General Header";
             var generalHeaderItem = await this.SitecoreGraphQLClient.QuerySingleItemAsync(_environment, _accessToken, path);
 
@@ -113,15 +140,7 @@ namespace CWXPMigration.Services
                 Language = "en",
                 Parent = dataItemId,
                 Name = "General Header",
-                TemplateId = XMC_Template_Constants.General_Header,
-                Fields = new List<SitecoreFieldInput>()
-                {
-                    new SitecoreFieldInput()
-                    {
-                        Name = "cta3Variant",
-                        Value = "JumpLink",
-                    }
-                }
+                TemplateId = XMC_Template_Constants.General_Header
             };
 
             var createdItems = await this.SitecoreGraphQLClient.CreateBulkItemsBatchedAsync(
@@ -146,6 +165,21 @@ namespace CWXPMigration.Services
                 var existingLinkItem = await this.SitecoreGraphQLClient.QuerySingleItemAsync(_environment, _accessToken, $"{path}/{linkItemName}");
                 if (existingLinkItem != null)
                 {
+                    var updateItem = new SitecoreUpdateItemInput
+                    {
+                        ItemId = existingLinkItem.ItemId,
+                        Fields = new List<SitecoreFieldInput>
+                        {
+                            new SitecoreFieldInput
+                            {
+                                Name = "link",
+                                Value = link
+                            }
+                        }
+                    };
+
+                    await this.SitecoreGraphQLClient.UpdateBulkItemsBatchedAsync(
+                        new List<SitecoreUpdateItemInput> { updateItem }, _environment, _accessToken);
                     linkItemIds.Add(existingLinkItem.ItemId);
                 }
                 else
@@ -191,19 +225,12 @@ namespace CWXPMigration.Services
         /// <summary>
         /// Updates the General Header item's CTA3 field with a pipe-separated list of link item IDs.
         /// </summary>
-        private async Task UpdateGeneralHeaderAsync(string itemId, string fieldName, string value)
+        private async Task UpdateGeneralHeaderAsync(string itemId, List<SitecoreFieldInput> fields)
         {
             var updateItem = new SitecoreUpdateItemInput
             {
                 ItemId = itemId,
-                Fields = new List<SitecoreFieldInput>
-                {
-                    new SitecoreFieldInput
-                    {
-                        Name = fieldName,
-                        Value = value
-                    }
-                }
+                Fields = fields
             };
 
             await this.SitecoreGraphQLClient.UpdateBulkItemsBatchedAsync(
@@ -225,7 +252,7 @@ namespace CWXPMigration.Services
 
             if (xpRendering != null)
             {
-                var xpDatasource = XMCItemUtility.GetDatasource(sourcePageItem, xpRendering.DatasourceID);
+                var xpDatasource = SitecoreUtility.GetDatasource(sourcePageItem, xpRendering.DatasourceID);
 
                 if (xpDatasource != null)
                 {
@@ -235,10 +262,10 @@ namespace CWXPMigration.Services
                     if (xmcDatasource == null)
                     {
                         var fields = new List<SitecoreFieldInput>();
-                        var heading = XMCItemUtility.GetSitecoreFieldInput(xpDatasource, "Heading", "heading");
+                        var heading = SitecoreUtility.GetSitecoreFieldInput(xpDatasource, "Heading", "heading");
                         if (heading != null)
                             fields.Add(heading);
-                        var bodyText = XMCItemUtility.GetSitecoreFieldInput(xpDatasource, "Description", "bodyText");
+                        var bodyText = SitecoreUtility.GetSitecoreFieldInput(xpDatasource, "Description", "bodyText");
                         if (bodyText != null)
                             fields.Add(bodyText);
 
@@ -258,32 +285,33 @@ namespace CWXPMigration.Services
             }
         }
 
-        private async Task CreatePublicationInfoDatasources(string newUrlPath, string dataItemId, string generalHeaderItemId, PageDataModel sourcePageItem)
+        private async Task<SitecoreFieldInput> CreatePublicationInfoDatasources(string newUrlPath, string dataItemId, string generalHeaderItemId, 
+            PageDataModel sourcePageItem)
         {
-            var xpRendering = sourcePageItem.Renderings.FirstOrDefault(x => x.RenderingName.Contains(XP_RenderingName_Constants.Publication_Footer));
+            var xpRendering = sourcePageItem.Renderings.FirstOrDefault(x => x.RenderingName.Contains(XP_RenderingName_Constants.Publication_Content));
 
             if (xpRendering != null)
             {
-                var xpDatasource = XMCItemUtility.GetDatasource(sourcePageItem, xpRendering.DatasourceID);
+                var xpDatasource = SitecoreUtility.GetDatasource(sourcePageItem, xpRendering.DatasourceID);
 
                 if (xpDatasource != null)
                 {
-                    var path = $"{newUrlPath}/Data/General Header/{xpDatasource.Name}";
+                    var path = $"{newUrlPath}/Data/{xpDatasource.Name}";
 
                     var xmcDatasource = await this.SitecoreGraphQLClient.QuerySingleItemAsync(_environment, _accessToken, path);
                     if (xmcDatasource == null)
                     {
                         var fields = new List<SitecoreFieldInput>();
-                        var draftNumberField = XMCItemUtility.GetSitecoreFieldInput(xpDatasource, "DraftNumber", "draftNumber");
+                        var draftNumberField = SitecoreUtility.GetSitecoreFieldInput(xpDatasource, "DraftNumber", "draftNumber");
                         if (draftNumberField != null)
                             fields.Add(draftNumberField);
-                        var displayCWApprovalSeal = XMCItemUtility.GetSitecoreFieldInput(xpDatasource, "DisplayCWApprovalSeal", "displayCWApprovalSeal");
+                        var displayCWApprovalSeal = SitecoreUtility.GetSitecoreFieldInput(xpDatasource, "DisplayCWApprovalSeal", "displayCWApprovalSeal");
                         if (displayCWApprovalSeal != null)
                             fields.Add(displayCWApprovalSeal);
-                        var documentDate = XMCItemUtility.GetSitecoreFieldInput(xpDatasource, "DocumentDate", "documentDate");
+                        var documentDate = SitecoreUtility.GetSitecoreFieldInput(xpDatasource, "DocumentDate", "documentDate");
                         if (documentDate != null)
                             fields.Add(documentDate);
-                        var nextReviewDate = XMCItemUtility.GetSitecoreFieldInput(xpDatasource, "NextReviewDate", "nextReviewDate");
+                        var nextReviewDate = SitecoreUtility.GetSitecoreFieldInput(xpDatasource, "NextReviewDate", "nextReviewDate");
                         if (nextReviewDate != null)
                             fields.Add(nextReviewDate);
 
@@ -304,9 +332,14 @@ namespace CWXPMigration.Services
                     var draftNumber = xpDatasource.Fields?.FirstOrDefault(x => x.Name.Equals("DraftNumber"))?.Value ?? string.Empty;
                     var title = $"{headline} ({draftNumber})";
 
-                    await UpdateGeneralHeaderAsync(generalHeaderItemId, "title", title);
+                    return new SitecoreFieldInput
+                    {
+                        Name = "title",
+                        Value = title
+                    };
                 }
             }
+            return null;
         }
 
         private async Task CreateScriptDatasources(string newUrlPath, string dataItemId, PageDataModel sourcePageItem)
@@ -321,7 +354,7 @@ namespace CWXPMigration.Services
 
                 foreach (var xpRendering in xpRenderings) 
                 {                    
-                    var xpDataSource = XMCItemUtility.GetDatasource(sourcePageItem, xpRendering.DatasourceID);
+                    var xpDataSource = SitecoreUtility.GetDatasource(sourcePageItem, xpRendering.DatasourceID);
                     if (xpDataSource != null)
                     {
                         var path = $"{newUrlPath}/Data/User Scripts/{xpDataSource.Name}";
@@ -329,7 +362,7 @@ namespace CWXPMigration.Services
                         if (xmcDatasource == null)
                         {
                             var fields = new List<SitecoreFieldInput>();
-                            var javaScript = XMCItemUtility.GetSitecoreFieldInput(xpDataSource, "JavaScript", "javaScript");
+                            var javaScript = SitecoreUtility.GetSitecoreFieldInput(xpDataSource, "JavaScript", "javaScript");
                             if (javaScript != null)
                                 fields.Add(javaScript);
                             var inputItem = new SitecoreCreateItemInput

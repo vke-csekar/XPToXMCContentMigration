@@ -1,56 +1,108 @@
 ﻿@model CWXPMigration.Models.ContentMigrationModel
 
 <form method="post">
-    <div class="container min-vh-100 d-flex align-items-center justify-content-center">
-        <div class="w-100">
-            <div class="row justify-content-center">
-                <div class="col-lg-6 col-md-8 col-sm-10">
+    <div class="container py-5">
+        <h2 class="text-center mb-5 fw-bold">Children's Content Migration Tool</h2>
 
-                    <div class="card shadow-sm rounded p-4">
-                        <h4 class="mb-4 text-center">Content Migration Tool</h4>
+        <div class="row">
+            <div class="col-md-8">
+                <!-- GLOBAL ITEM PATHS -->
+                <div class="card mb-4 p-3 border-0 shadow-sm">                    
+                    <div class="mb-3">
+                        <label for="itemPath" class="form-label fw-semibold">XP Item Path *</label>
+                        <input type="text" id="itemPath" name="itemPath" value="@Model.ItemPath" class="form-control" placeholder="/sitecore/content/..." required/>
+                    </div>
+                    <div class="mb-3">
+                        <label for="xmcItemPath" class="form-label fw-semibold">XMC Item Path (optional)</label>
+                        <input type="text" id="xmcItemPath" name="xmcItemPath" value="@Model.XMCItemPath" class="form-control" placeholder="/sitecore/content/..." />
+                    </div>
+                </div>
 
+                <div class="accordion" id="migrationAccordion">
+                    <!-- MIGRATION OPTIONS -->
+                    <div class="accordion-item">
+                        <h2 class="accordion-header" id="headingOptions">
+                            <button class="accordion-button" type="button" data-bs-toggle="collapse" data-bs-target="#collapseOptions" aria-expanded="true" aria-controls="collapseOptions">
+                                Migration Options
+                            </button>
+                        </h2>
+                        <div id="collapseOptions" class="accordion-collapse collapse show" aria-labelledby="headingOptions" data-bs-parent="#migrationAccordion">
+                            <div class="accordion-body">
+                                <!-- Language -->
+                                <div class="mt-4">
+                                    <label for="language" class="form-label fw-semibold">Language</label>
+                                    <select id="language" name="language" class="form-select">
+                                        <option value="en" selected>English</option>
+                                        <option value="es-ES">Spanish</option>
+                                    </select>
+                                </div>
+
+                                <!-- Workflow State -->
+                                <div class="mt-4">
+                                    <label for="workflowState" class="form-label fw-semibold">Workflow State</label>
+                                    <select id="workflowState" name="workflowState" class="form-select">
+                                        <option value="Draft" selected>Draft</option>
+                                        <option value="Approved">Approved</option>
+                                    </select>
+                                </div>
+
+                                <div class="form-check mt-4">
+                                    <input class="form-check-input" type="checkbox" id="createPages" name="createPages">
+                                    <label class="form-check-label fw-semibold" for="createPages">Create Pages During Sync</label>
+                                </div>
+                                <div class="form-check mt-4">
+                                    <input class="form-check-input" type="checkbox" id="syncComponents" name="syncComponents">
+                                    <label class="form-check-label fw-semibold" for="syncComponents">Sync Components</label>
+                                </div>
+
+                                <!-- Grouped: Global Datasources & Datasource For -->
+                                <div class="border rounded p-3 mt-4">
+                                    <div class="form-check mb-2">
+                                        <input class="form-check-input" type="checkbox" id="syncGlobalDatasources" name="syncGlobalDatasources">
+                                        <label class="form-check-label fw-semibold" for="syncGlobalDatasources">Sync Global Datasources</label>
+                                    </div>
+                                    <div class="mt-2">
+                                        <label for="datasourceType" class="form-label fw-semibold">Datasource Type</label>
+                                        <select id="datasourceType" name="datasourceType" class="form-select">
+                                            <option value="Blogs" selected>Blogs</option>
+                                            <option value="Providers">Providers</option>
+                                        </select>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- TEMPLATE MIGRATION -->
+                    <div class="accordion-item">
+                        <h2 class="accordion-header" id="headingTemplate">
+                            <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#collapseTemplate" aria-expanded="false" aria-controls="collapseTemplate">
+                                Content Migration with Templates & Field Mapping
+                            </button>
+                        </h2>
+                        <div id="collapseTemplate" class="accordion-collapse collapse" aria-labelledby="headingTemplate" data-bs-parent="#migrationAccordion">
+                            <div class="accordion-body">
+                                <div id="templateButtonContainer" class="mb-4">
+                                    <div class="d-grid gap-2">
+                                        <button type="button" class="btn btn-outline-primary" id="getFieldsBtn">Get Templates</button>
+                                    </div>
+                                </div>
+
+                                <div id="templateSelectorContainer" style="display:none" class="mb-4">
+                                    <label for="templateSelector" class="form-label">Select Templates</label>
+                                    <select id="templateSelector" class="form-control" multiple></select>
+                                </div>
+
+                                <div id="templateFieldsContainer" class="mb-4"></div>
+                                <input type="hidden" id="mappingSelections" name="mappingSelections" />
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- ENVIRONMENT & SUBMIT -->
+                    <div class="card mt-4 p-4 shadow-sm border-0">
                         <div class="mb-3">
-                            <label for="itemPath" class="form-label">Sitecore Item Path or ID *</label>
-                            <input type="text" id="itemPath" name="itemPath" value="@Model.ItemPath" class="form-control" placeholder="/sitecore/content/..." required />
-                        </div>
-
-                        <div class="mb-3">
-                            <label for="xmcItemPath" class="form-label">Sitecore XMC Item Path</label>
-                            <span class="form-text text-muted">
-                                Use this only for fully migrated pages such as Blogs, Providers, and Medical Professionals, etc.
-                            </span>
-                            <input type="text" id="xmcItemPath" name="xmcItemPath" value="@Model.XMCItemPath" class="form-control" placeholder="/sitecore/content/..." />
-                        </div>
-
-                        <div class="form-check mb-3">
-                            <input class="form-check-input" type="checkbox" id="createPages" name="createPages">
-                            <label class="form-check-label" for="createPages">
-                                Create Pages During Sync
-                            </label>
-                        </div>
-
-                        <div class="form-check mb-3">
-                            <input class="form-check-input" type="checkbox" id="syncComponents" name="syncComponents">
-                            <label class="form-check-label" for="syncComponents">
-                                Sync Components
-                            </label>
-                        </div>
-
-                        <div class="d-grid gap-2 mb-4">
-                            <button type="button" class="btn btn-primary" id="getFieldsBtn">Get Templates</button>
-                        </div>
-
-                        <div id="templateDropdownContainer" class="mb-4" style="display:none;">
-                            <label for="templateSelector" class="form-label">Select Templates</label>
-                            <select id="templateSelector" class="form-control" multiple></select>
-                        </div>
-
-                        <div id="templateFieldsContainer" class="mb-4"></div>
-
-                        <input type="hidden" id="mappingSelections" name="mappingSelections" />
-
-                        <div class="mb-3">
-                            <label for="environment" class="form-label">XM Cloud Environment *</label>
+                            <label for="environment" class="form-label fw-semibold">XM Cloud Environment *</label>
                             <select id="environment" name="environment" class="form-select" required>
                                 <option value="DEV" @(Model.Environment == "DEV" ? "selected" : "")>DEV</option>
                                 <option value="UAT" @(Model.Environment == "UAT" ? "selected" : "")>UAT</option>
@@ -67,24 +119,50 @@
 
                         <div id="syncResultContainer" class="mt-4"></div>
                     </div>
-
                 </div>
+            </div>
+
+            <!-- SIDE IMAGE COLUMN -->
+            <div class="col-md-4 d-none d-md-block">
+                <img src="https://cdn-icons-png.flaticon.com/512/3262/3262047.png" alt="CMS Icon" class="img-fluid mt-4 animate__animated animate__fadeInRight" />
             </div>
         </div>
     </div>
 </form>
 
+<!-- Styling and Animation -->
+<link href="https://cdnjs.cloudflare.com/ajax/libs/animate.css/4.1.1/animate.min.css" rel="stylesheet" />
 <style>
-    .accordion-button {
-        font-weight: 500;
-        background-color: #f1f3f5;
+    body {
+        background: linear-gradient(to right, #e3f2fd, #ffffff);
     }
 
-    .form-check-label small {
-        font-size: 0.8em;
-        margin-left: 4px;
+    h2 {
+        font-size: 2.25rem;
+        color: #343a40;
+    }
+
+    .accordion-button {
+        font-weight: 600;
+        background-color: #f8f9fa;
+    }
+
+    .accordion-item {
+        border: none;
+        border-radius: 8px;
+        overflow: hidden;
+        margin-bottom: 1rem;
+    }
+
+    .accordion-body {
+        background: #fff;
+        border: 1px solid #e0e0e0;
+        border-top: none;
+        padding: 1.5rem;
     }
 </style>
+
+
 
 <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
@@ -98,11 +176,63 @@
             id: "{6DE30456-2D7D-4D28-BF1B-2B2B8AA42E62}",
             name: "Provider Profile",
             fields: ["firstName", "middleName", "videoID", "positionTitles", "publications", "awards", "epicPhysicianID", "phone",
-                "lastName", "displayInPhysicianListing", "photo", "providerID", "certifications"     ]
+                "lastName", "displayInPhysicianListing", "photo", "providerID", "certifications", "Title", "specialties",
+                "locations"]
+        },
+        {
+            id: "{BB35FDA8-7E1F-48DC-A556-FA8FD89F96C2}",
+            name: "Specialty Care",
+            fields: ["locationID", "locationName", "address1", "address2", "alternateCity", "city", "zip", "emailAddress",
+                "showInLocationListings", "displayPhysiciansAtThisLocation", "displayOpenScheduling", "openScheduleIntro", "epicDeptID", "npiNumber",
+                "ratingAndReviewDataId", "photo", "website", "specialties", "addressMapURL", "acceptingNewPatients",
+                "department", "mobileVisiblePhoneNumber", "Latitude", "Longitude"]
+        },
+        {
+            id: "{6274DC7B-91E7-4243-B5DA-96604F2EBBEA}",
+            name: "Primary Care",
+            fields: ["locationID", "locationName", "address1", "address2", "alternateCity", "city", "zip", "emailAddress",
+                "showInLocationListings", "displayPhysiciansAtThisLocation", "displayOpenScheduling", "openScheduleIntro", "epicDeptID", "npiNumber",
+                "ratingAndReviewDataId", "photo", "website", "specialties", "addressMapURL", "acceptingNewPatients",
+                "department", "mobileVisiblePhoneNumber", "Latitude", "Longitude"]
+        },
+        {
+            id: "{6274DC7B-91E7-4243-B5DA-96604F2EBBEA}",
+            name: "Primary Care",
+            fields: ["locationID", "locationName", "address1", "address2", "alternateCity", "city", "zip", "emailAddress",
+                "showInLocationListings", "displayPhysiciansAtThisLocation", "displayOpenScheduling", "openScheduleIntro", "epicDeptID", "npiNumber",
+                "ratingAndReviewDataId", "photo", "website", "specialties", "addressMapURL", "acceptingNewPatients",
+                "department", "mobileVisiblePhoneNumber", "Latitude", "Longitude"]
         }
     ];
 
-    $(document).ready(function () {
+    $(document).ready(function () {        
+
+        function handleSyncOptionLogic() {
+            const isGlobalChecked = $('#syncGlobalDatasources').is(':checked');
+            const isCreateChecked = $('#createPages').is(':checked');
+            const isSyncChecked = $('#syncComponents').is(':checked');
+
+            if (isGlobalChecked) {
+                $('#createPages, #syncComponents').prop('checked', false).prop('disabled', true);
+                $('#getFieldsBtn').prop('disabled', true);
+            } else {
+                $('#createPages, #syncComponents').prop('disabled', false);
+                $('#getFieldsBtn').prop('disabled', false);
+            }
+
+            if (isCreateChecked || isSyncChecked) {
+                $('#syncGlobalDatasources').prop('checked', false).prop('disabled', true);
+                $('#datasourceType').prop('disabled', true);                
+            } else {
+                $('#syncGlobalDatasources').prop('disabled', false);
+                $('#datasourceType').prop('disabled', false);                
+            }
+        }
+
+        $('#createPages, #syncComponents, #syncGlobalDatasources').on('change', handleSyncOptionLogic);
+        $(document).ready(handleSyncOptionLogic);
+
+
         $('#getFieldsBtn').on('click', function () {
             const parentPath = $('input[name="itemPath"]').val().trim();
             if (!parentPath) {
@@ -116,7 +246,7 @@
                 data: { parentPath },
                 success: function (templates) {
                     if (!templates || templates.length === 0) {
-                        $('#templateDropdownContainer').hide();
+                        $('#templateSelectorContainer').hide();
                         $('#templateFieldsContainer').html('<p class="text-danger">No templates found under this path.</p>');
                         return;
                     }
@@ -130,7 +260,7 @@
                         $select.append(`<option value="${t.TemplateId}">${t.TemplateName}</option>`);
                     });
 
-                    $('#templateDropdownContainer').show();
+                    $('#templateSelectorContainer').show();
 
                     $select.select2({
                         placeholder: 'Select templates...',
@@ -156,15 +286,17 @@
                 const $section = $('<div class="mb-4 p-3 bg-light border rounded"></div>');
                 $section.append(`<label class="form-label fw-bold">${templateName} <span class="text-muted">Map to XMC Template</span></label>`);
 
-                // XM Template dropdown
                 const $xmSelect = $(`<select class="form-select mb-2 xm-template-dropdown" data-xptemplateid="${templateId}"></select>`);
                 $xmSelect.append(`<option value="">-- Select XMC Template --</option>`);
-                xmcTemplates.forEach(xm => {
-                    $xmSelect.append(`<option value="${xm.id}">${xm.name}</option>`);
-                });
+
+                if (typeof xmcTemplates !== 'undefined') {
+                    xmcTemplates.forEach(xm => {
+                        $xmSelect.append(`<option value="${xm.id}">${xm.name}</option>`);
+                    });
+                }
+
                 $section.append($xmSelect);
 
-                // XP Fields multi-select
                 $section.append(`<label class="form-label mt-2">Select XP Template Fields</label>`);
                 const $xpFieldSelect = $(`<select multiple class="form-select field-multiselect" data-templateid="${templateId}"></select>`);
                 fields.forEach(field => {
@@ -172,7 +304,6 @@
                 });
                 $section.append($xpFieldSelect);
 
-                // XM Field Mapping container
                 const $fieldMapContainer = $(`<div class="mt-2 xm-field-map-container" data-xptemplateid="${templateId}"><label class="form-label">Map Fields to XM Cloud</label></div>`);
                 $section.append($fieldMapContainer);
 
@@ -183,13 +314,12 @@
             });
         });
 
-        // Listen for XP field changes to show XM field mapping
         $(document).on('change', '.field-multiselect', function () {
             const templateId = $(this).data('templateid');
             const selectedFields = $(this).val() || [];
             const $mapContainer = $(`.xm-field-map-container[data-xptemplateid="${templateId}"]`);
             const xmTemplateId = $(`.xm-template-dropdown[data-xptemplateid="${templateId}"]`).val();
-            const xmTemplate = xmcTemplates.find(x => x.id === xmTemplateId);
+            const xmTemplate = typeof xmcTemplates !== 'undefined' ? xmcTemplates.find(x => x.id === xmTemplateId) : null;
 
             $mapContainer.empty().append('<label class="form-label">Map Fields to XMC Cloud</label>');
 
@@ -214,12 +344,10 @@
             });
         });
 
-        // Listen for XM template change to refresh mapping
         $(document).on('change', '.xm-template-dropdown', function () {
             $(this).closest('.mb-4').find('.field-multiselect').trigger('change');
         });
 
-        // Serialize data on submit
         $('form').on('submit', function (e) {
             e.preventDefault();
 
@@ -227,7 +355,6 @@
             const $spinner = $('#syncSpinner');
             const $btnText = $('#syncBtnText');
 
-            // Disable button and show spinner
             $btn.prop('disabled', true);
             $spinner.removeClass('d-none');
             $btnText.text('Syncing...');
@@ -236,7 +363,7 @@
 
             $('#templateFieldsContainer .field-multiselect').each(function () {
                 const templateId = $(this).data('templateid');
-                const selectedOptions = $(this).val(); // array of value="Name||Type"
+                const selectedOptions = $(this).val();
                 const xmTemplateId = $(`.xm-template-dropdown[data-xptemplateid="${templateId}"]`).val();
 
                 if (selectedOptions && selectedOptions.length > 0) {
@@ -260,15 +387,21 @@
             });
 
             $('#mappingSelections').val(JSON.stringify(selectedFieldData));
-            console.log('Submitted Mapping:', selectedFieldData); // for debugging
-            //this.submit(); // or manually send via AJAX
+
             $.ajax({
                 url: '@Url.Action("SyncContent", "ContentMigration")',
                 type: 'POST',
                 data: {
-                    itemPath: $('input[name="itemPath"]').val().trim(), mappingSelections: selectedFieldData,
-                    environment: $('#environment').val(), xmcItemPath: $('input[name="xmcItemPath"]').val().trim(),
-                    syncComponents: $('#syncComponents').is(':checked'), createPages: $('#createPages').is(':checked')
+                    itemPath: $('input[name="itemPath"]').val().trim(),
+                    xmcItemPath: $('input[name="xmcItemPath"]').val().trim(),
+                    workflowState: $('#workflowState').val(),
+                    language: $('#language').val(),
+                    createPages: $('#createPages').is(':checked'),
+                    syncComponents: $('#syncComponents').is(':checked'), 
+                    syncGlobalDatasources: $('#syncGlobalDatasources').is(':checked'),
+                    datasourceType: $('#datasourceType').val(),
+                    mappingSelections: selectedFieldData,
+                    environment: $('#environment').val(),                                                   
                 },
                 success: function (response) {
                     if (!response || response.length === 0) {
@@ -280,11 +413,11 @@
 
                     response.forEach(item => {
                         html += `<li class="list-group-item">
-            <strong>${item.syncedItemPath}</strong><br>
-            Status: ${item.success ? '<span class="text-success">Success</span>' : '<span class="text-danger">Failed</span>'}
-            ${item.message ? `<br><em>${item.message}</em>` : ''}
-            ${item.errors && item.errors.length ? '<br><strong>Errors:</strong><ul>' + item.errors.map(e => `<li>${e}</li>`).join('') + '</ul>' : ''}
-        </li>`;
+                            <strong>${item.SyncedItemPath}</strong><br>
+                            Status: ${item.Success ? '<span class="text-success">Success</span>' : '<span class="text-danger">Failed</span>'}
+                            ${item.Message ? `<br><em>${item.Message}</em>` : ''}
+                            ${item.Errors && item.Errors.length ? '<br><strong>Errors:</strong><ul>' + item.Errors.map(e => `<li>${e}</li>`).join('') + '</ul>' : ''}
+                        </li>`;
                     });
 
                     html += '</ul></div>';
@@ -294,7 +427,6 @@
                     $('#templateFieldsContainer').html('<p class="text-danger">Error loading templates.</p>');
                 },
                 complete: function () {
-                    // Re-enable button and hide spinner
                     $btn.prop('disabled', false);
                     $spinner.addClass('d-none');
                     $btnText.text('Start Sync');
@@ -303,5 +435,3 @@
         });
     });
 </script>
-
-

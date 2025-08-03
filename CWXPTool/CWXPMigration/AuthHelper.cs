@@ -11,6 +11,7 @@ namespace CWXPMigration
     {
         private static readonly HttpClient _httpClient = new HttpClient();
 
+        
         public static async Task<AuthResponse> GetAuthTokenAsync(string environment)
         {
             Sitecore.Diagnostics.Log.Info($"Starting authentication at authUrl: {Constants.AuthUrl}", typeof(AuthHelper));

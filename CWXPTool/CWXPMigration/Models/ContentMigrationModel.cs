@@ -70,9 +70,14 @@ namespace CWXPMigration.Models
 
     public class XPField
     {
+        public XPField(Sitecore.Data.Fields.Field field)
+        {
+            Field = field;
+        }
         public string Name { get; set; }
         public string Value { get; set; }
         public string Type { get; set; }
+        public Sitecore.Data.Fields.Field Field { get; set; }
     }
 
     public class PageDataModel
@@ -133,6 +138,16 @@ namespace CWXPMigration.Models
         public string ItemId { get; set; }
         public string Path { get; set; }
         public string Name { get; set; }
+    }
+
+    public class XPSpecialtyItem : SitecoreItemBase
+    {
+        public List<SitecoreFieldInput> Fields { get; set; }
+    }
+
+    public class XPBlogResourceItem : SitecoreItemBase
+    {
+        public string Description { get; set; }
     }
 
     public class GraphQLQuery
