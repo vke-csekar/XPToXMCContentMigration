@@ -130,7 +130,8 @@ namespace CWXPTool.Controllers
                     if (syncGlobalDatasources)
                     {
                         Sitecore.Diagnostics.Log.Info($"syncGlobalDatasources: {syncGlobalDatasources}", this);
-                        await SyncBlogData();
+                        if(datasourceType.Equals("Blogs"))
+                            await SyncBlogData();
                         return Json(syncResults);
                     }
 

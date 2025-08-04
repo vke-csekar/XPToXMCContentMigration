@@ -171,37 +171,47 @@
 <script>
     let templateMap = {};
     let templateFieldsMap = {};
+    const locationFields = ["locationID", "locationName", "address1", "address2", "alternateCity", "city", "zip", "emailAddress",
+        "showInLocationListings", "displayPhysiciansAtThisLocation", "displayOpenScheduling", "openScheduleIntro", "epicDeptID", "npiNumber",
+        "ratingAndReviewDataId", "photo", "website", "specialties", "addressMapURL", "acceptingNewPatients",
+        "mobileVisiblePhoneNumber", "Latitude", "Longitude"];
     let xmcTemplates = [
         {
             id: "{6DE30456-2D7D-4D28-BF1B-2B2B8AA42E62}",
             name: "Provider Profile",
             fields: ["firstName", "middleName", "videoID", "positionTitles", "publications", "awards", "epicPhysicianID", "phone",
-                "lastName", "displayInPhysicianListing", "photo", "providerID", "certifications", "Title", "specialties",
+                "lastName", "displayInPhysicianListing", "photo", "providerID", "certifications", "Title",
                 "locations"]
         },
         {
             id: "{BB35FDA8-7E1F-48DC-A556-FA8FD89F96C2}",
             name: "Specialty Care",
-            fields: ["locationID", "locationName", "address1", "address2", "alternateCity", "city", "zip", "emailAddress",
-                "showInLocationListings", "displayPhysiciansAtThisLocation", "displayOpenScheduling", "openScheduleIntro", "epicDeptID", "npiNumber",
-                "ratingAndReviewDataId", "photo", "website", "specialties", "addressMapURL", "acceptingNewPatients",
-                "department", "mobileVisiblePhoneNumber", "Latitude", "Longitude"]
+            fields: locationFields
         },
         {
             id: "{6274DC7B-91E7-4243-B5DA-96604F2EBBEA}",
             name: "Primary Care",
-            fields: ["locationID", "locationName", "address1", "address2", "alternateCity", "city", "zip", "emailAddress",
-                "showInLocationListings", "displayPhysiciansAtThisLocation", "displayOpenScheduling", "openScheduleIntro", "epicDeptID", "npiNumber",
-                "ratingAndReviewDataId", "photo", "website", "specialties", "addressMapURL", "acceptingNewPatients",
-                "department", "mobileVisiblePhoneNumber", "Latitude", "Longitude"]
+            fields: locationFields
         },
         {
-            id: "{6274DC7B-91E7-4243-B5DA-96604F2EBBEA}",
-            name: "Primary Care",
-            fields: ["locationID", "locationName", "address1", "address2", "alternateCity", "city", "zip", "emailAddress",
-                "showInLocationListings", "displayPhysiciansAtThisLocation", "displayOpenScheduling", "openScheduleIntro", "epicDeptID", "npiNumber",
-                "ratingAndReviewDataId", "photo", "website", "specialties", "addressMapURL", "acceptingNewPatients",
-                "department", "mobileVisiblePhoneNumber", "Latitude", "Longitude"]
+            id: "{7A4E0C65-C397-4E65-A941-7CF879C0B727}",
+            name: "Urgent Care",
+            fields: locationFields
+        },
+        {
+            id: "{FBAA34FA-9D09-4724-9C0B-F7F0860B35A8}",
+            name: "Mental Health",
+            fields: locationFields
+        },
+        {
+            id: "{CE453EDE-ED09-4928-80B0-143556AA52E8}",
+            name: "Hospital",
+            fields: locationFields
+        },
+        {
+            id: "{1B371DE2-704C-4D43-A94B-FC04B95DC6B8}",
+            name: "Location Page",
+            fields: locationFields
         }
     ];
 
@@ -309,7 +319,7 @@
 
                 $container.append($section);
 
-                $xpFieldSelect.select2({ placeholder: "Select fields", width: "resolve" });
+                $xpFieldSelect.select2({ placeholder: "Select fields", width: "resolve" });                
                 $xmSelect.select2({ width: "resolve" });
             });
         });
