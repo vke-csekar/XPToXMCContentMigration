@@ -50,7 +50,7 @@ namespace CWXPMigration.Services
                 if (rteField == null)
                     continue;
 
-                var contents = RichTextSplitter.SplitByH2(rteField.Value);
+                var contents = RichTextSplitter.SplitByH2(rteField.Value, "en");
                 if (contents == null || !contents.Any())
                     continue;
 

@@ -115,7 +115,9 @@ namespace CWXPTool.Controllers
                 _accessToken = authResponse.AccessToken;
 
                 var database = Sitecore.Context.Database;
-                var rootItem = SitecoreUtility.IsGuidInput(itemPath) ? database.GetItem(ID.Parse(itemPath)) : database.GetItem(itemPath);
+                var rootItem = Sitecore.Data.ID.IsID(itemPath)
+                ? database.GetItem(ID.Parse(itemPath))
+                : database.GetItem(itemPath);
                 if (rootItem != null)
                 {
                     Sitecore.Diagnostics.Log.Info($"rootItem: {rootItem.ID.ToString()}", this);
@@ -159,7 +161,7 @@ namespace CWXPTool.Controllers
                                     }
                                 }
                             }
-                            syncResults = await SyncPagesInBatches(model.Items, pageMappingItems, mappingSelections, createPages, syncComponents);
+                            syncResults = await SyncPagesInBatches(language, model.Items, pageMappingItems, mappingSelections, createPages, syncComponents);
                         }
                     }
                 }
@@ -179,7 +181,7 @@ namespace CWXPTool.Controllers
             return Json(syncResults);
         }
 
-        private async Task<List<SyncContentResponse>> SyncPagesInBatches(List<PageDataModel> pageDataItems,
+        private async Task<List<SyncContentResponse>> SyncPagesInBatches(string language, List<PageDataModel> pageDataItems,
             List<PageMapping> pageMappingItems, List<TemplateFieldMapping> mappingSelections, bool createPages = false, bool syncComponents = false)
         {
             const int batchSize = 5;
@@ -247,8 +249,21 @@ namespace CWXPTool.Controllers
                                     var headlineRenderings2 = sourcePageItem.Renderings.Where(r => r.RenderingName.Contains(XP_RenderingName_Constants.PageHeadline));
                                     if (headlineRenderings2 != null && headlineRenderings2.Any())
                                         headlineRenderings.AddRange(headlineRenderings2);
+                                    
+                                    await SyncPageFields(language, sourcePageItem, matchedMapping, targetItem, headlineRenderings, mappingSelections);
 
-                                    await SyncPageFields(sourcePageItem, matchedMapping, targetItem, headlineRenderings, mappingSelections);
+                                    if (!language.Equals("en", StringComparison.OrdinalIgnoreCase))
+                                    {
+                                        var langItem = SitecoreUtility.GetItemByLanguage(sourcePageItem.ItemID.ToString(), language, database);
+                                        if (langItem != null)
+                                        {
+                                            var langPageModel = SitecoreUtility.ExtractPageData(langItem, database);
+                                            if (langPageModel != null)
+                                            {
+                                                await SyncPageFields(language, langPageModel, matchedMapping, targetItem, headlineRenderings, mappingSelections);
+                                            }
+                                        }
+                                    }
 
                                     if (syncComponents)
                                     {
@@ -280,7 +295,7 @@ namespace CWXPTool.Controllers
 
                                             if (xmcTemplateId.Equals(XMC_Page_Template_Constants.Teaching_Sheets))
                                             {
-                                                await TeachingSheetMigrationService.ProcessAsync(rteRenderings, sourcePageItem, dataItemId, matchedMapping.NEWURLPATH, _environment, _accessToken, generalHeaderItemId);
+                                                await TeachingSheetMigrationService.ProcessAsync(language, rteRenderings, sourcePageItem, dataItemId, matchedMapping.NEWURLPATH, _environment, _accessToken, generalHeaderItemId);
                                                 sourcePageItem = SitecoreUtility.RemoveRenderingDatasources(sourcePageItem, sourcePageItem.Renderings, XP_RenderingName_Constants.RichText);
                                                 sourcePageItem = SitecoreUtility.RemoveRenderingDatasources(sourcePageItem, sourcePageItem.Renderings, XP_RenderingName_Constants.Multi_Button_Callout);
                                             }
@@ -729,7 +744,7 @@ namespace CWXPTool.Controllers
             return createdItemId;
         }
 
-        private async Task<bool> SyncPageFields(PageDataModel sourcePageItem, PageMapping pageMapping, SitecoreItem targetItem,
+        private async Task<bool> SyncPageFields(string lang, PageDataModel sourcePageItem, PageMapping pageMapping, SitecoreItem targetItem,
             List<RenderingInfo> headlineRenderings, List<TemplateFieldMapping> mappingSelections)
         {
             Sitecore.Diagnostics.Log.Info($"Page context fields syncing started for {sourcePageItem.Page}|{pageMapping.NEWURLPATH}", this);
@@ -792,16 +807,16 @@ namespace CWXPTool.Controllers
                 {
                     ItemId = targetItem.ItemId,
                     Fields = fields,
-                    Language = "en"
+                    Language = lang
                 };
                 var result = await SitecoreGraphQLClient.UpdateBulkItemsBatchedAsync(new List<SitecoreUpdateItemInput>() { updateItemInput }, _environment, _accessToken, 10);
-                Sitecore.Diagnostics.Log.Info($"Page context fields syncing completed for {sourcePageItem.Page}|{pageMapping.NEWURLPATH}", this);
+                Sitecore.Diagnostics.Log.Info($"Page context fields syncing completed for {sourcePageItem.Page}|{pageMapping.NEWURLPATH}", this);                                
                 return result;
             }
 
 
             return false;
-        }
+        }      
 
         private async Task EnsureSitecorePathExistsAsync(string targetPath)
         {

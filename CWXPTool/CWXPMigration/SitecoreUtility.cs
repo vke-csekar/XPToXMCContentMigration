@@ -2,6 +2,7 @@
 using Sitecore.Data;
 using Sitecore.Data.Fields;
 using Sitecore.Data.Items;
+using Sitecore.Globalization;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -40,6 +41,22 @@ namespace CWXPMigration
             return datasource.Fields.FirstOrDefault(f =>
                 !string.IsNullOrEmpty(f.Value) &&
                 f.Type.Equals("Rich Text", System.StringComparison.OrdinalIgnoreCase));
+        }
+
+        public static XPField GetRichTextField(Item datasource)
+        {            
+            var field = datasource.Fields.FirstOrDefault(f =>
+                !string.IsNullOrEmpty(f.Value) &&
+                f.Type.Equals("Rich Text", System.StringComparison.OrdinalIgnoreCase));
+            if(field != null)
+            {
+                var xpField = new XPField(field);
+                xpField.Name = field.Name;
+                xpField.Value = field.Value;
+                xpField.Type = field.Type;
+                return xpField;
+            }
+            return null;
         }
 
         public static SitecoreFieldInput GetSitecoreFieldInput(DataSourceDetail datasource, string xpFieldName, string xmcFieldName)
@@ -100,14 +117,6 @@ namespace CWXPMigration
             return sourcePageItem;
         }
 
-        public static bool IsGuidInput(string input)
-        {
-            if (string.IsNullOrWhiteSpace(input))
-                return false;
-
-            return Guid.TryParse(input, out _);
-        }
-
         public static List<RenderingInfo> GetRenderingsForCurrentDevice(Item item)
         {
             var results = new List<RenderingInfo>();
@@ -150,6 +159,7 @@ namespace CWXPMigration
 
             foreach (var pageItem in pages)
             {
+                Sitecore.Diagnostics.Log.Info($"{pageItem.ID}|{pageItem.Language.Name}", typeof(SitecoreUtility));
                 var pageData = SitecoreUtility.ExtractPageData(pageItem, database);
                 xpPageDataItems.Add(pageData);
             }
@@ -170,6 +180,7 @@ namespace CWXPMigration
                     xpField.Name = field.Name;
                     xpField.Value = field.Value;
                     xpField.Type = field.Type;
+                    Sitecore.Diagnostics.Log.Info($"Field:{xpField.Name}|Value:{xpField.Value}", typeof(SitecoreUtility));
                     pageModel.Fields.Add(xpField);
                 }
             }
@@ -220,6 +231,35 @@ namespace CWXPMigration
 
             return pageModel;
         }
-        #endregion        
+        #endregion
+
+        public static Item GetItemByLanguage(string itemPathOrID, string language, Database database)
+        {
+            Item item = Sitecore.Data.ID.IsID(itemPathOrID)
+                ? database.GetItem(ID.Parse(itemPathOrID))
+                : database.GetItem(itemPathOrID);
+
+            if (item == null)
+            {
+                Sitecore.Diagnostics.Log.Warn($"Item not found: {itemPathOrID}", typeof(SitecoreUtility));
+                return null;
+            }
+
+            if (language.Equals("en", StringComparison.OrdinalIgnoreCase))
+                return item;
+
+            Language lang = Language.Parse(language);
+
+            Item langItem = database.GetItem(item.ID, lang);
+
+            if (langItem == null || langItem.Versions == null && langItem.Versions.Count <= 0)
+            {
+                Sitecore.Diagnostics.Log.Info($"No version for language: {lang.Name}", typeof(SitecoreUtility));
+                return langItem;
+            }
+
+            return langItem;            
+        }
+
     }
 }

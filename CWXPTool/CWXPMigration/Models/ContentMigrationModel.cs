@@ -191,6 +191,7 @@ namespace CWXPMigration.Models
     {
         public string Title { get; set; }
         public string HtmlContent { get; set; }
+        public string Language { get; set; }
     }
 
     public class SitecoreItemBase
