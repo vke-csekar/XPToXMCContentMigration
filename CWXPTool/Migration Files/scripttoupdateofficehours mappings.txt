@@ -1,0 +1,69 @@
+# --------------------
+# INPUT – MODIFY ROOT PATH
+# --------------------
+$rootPath = "/sitecore/content/CW/childrens/Home/Locations"
+
+# --------------------
+# SETUP
+# --------------------
+$database = Get-Database -Name "master"
+$rootItem = Get-Item -Path $rootPath -Database $database
+if (-not $rootItem) {
+    Write-Warning "❌ Root item not found: $rootPath"
+    return
+}
+
+# --------------------
+# FUNCTION: Get valid child IDs (excluding 'x' values)
+# --------------------
+function Get-ValidChildIDs($folderItem) {
+    return $folderItem.Children | Where-Object {
+        $open = $_["open"]
+        $close = $_["close"]
+        ($open -and $close -and $open.ToLower() -ne "x" -and $close.ToLower() -ne "x")
+    } | ForEach-Object { $_.ID.ToString() }
+}
+
+# --------------------
+# FUNCTION: Process a single location page
+# --------------------
+function Process-LocationPage($pageItem) {
+    $basePath = "$($pageItem.Paths.FullPath)/Data/Office Hours Folder"
+    $officePath = "$basePath/Office Hours"
+    $phonePath  = "$basePath/Phone Hours"
+
+    $officeFolder = Get-Item -Path $officePath -Database $database
+    $phoneFolder  = Get-Item -Path $phonePath -Database $database
+
+    # Skip page silently if either folder doesn't exist
+    if (-not $officeFolder -or -not $phoneFolder) { return }
+
+    $officeHoursIDs = Get-ValidChildIDs $officeFolder
+    $phoneHoursIDs  = Get-ValidChildIDs $phoneFolder
+
+    try {
+        $pageItem.Editing.BeginEdit()
+        $pageItem["officeHours"] = [string]::Join("|", $officeHoursIDs)
+        $pageItem["phoneHours"]  = [string]::Join("|", $phoneHoursIDs)
+        $pageItem.Editing.EndEdit()
+
+        Write-Host "`n✅ Updated: $($pageItem.Paths.FullPath)"
+        Write-Host "• officeHours: $($officeHoursIDs -join ', ')"
+        Write-Host "• phoneHours:  $($phoneHoursIDs -join ', ')"
+    }
+    catch {
+        Write-Warning "❌ Failed to update $($pageItem.Paths.FullPath): $_"
+        $pageItem.Editing.CancelEdit()
+    }
+}
+
+# --------------------
+# MAIN: Traverse all children under root
+# --------------------
+Write-Host "`n🚀 Starting updates under: $($rootItem.Paths.FullPath)"
+foreach ($child in $rootItem.Axes.GetDescendants()) {
+    if ($child.TemplateName -eq "Hospital") {
+        Process-LocationPage $child
+    }
+}
+Write-Host "`n✅ All matching location pages processed."

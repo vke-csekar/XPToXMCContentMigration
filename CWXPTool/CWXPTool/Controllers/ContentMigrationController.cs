@@ -8,8 +8,6 @@ using Sitecore.Data;
 using Sitecore.Data.Fields;
 using Sitecore.Data.Items;
 using Sitecore.Data.Managers;
-using Sitecore.Install.Framework;
-using Sitecore.Resources;
 using System;
 using System.Collections.Generic;
 using System.Data;
@@ -31,15 +29,23 @@ namespace CWXPTool.Controllers
         string _environment = string.Empty;
         string _accessToken = string.Empty;
         List<PageMapping> _allPageMappings = new List<PageMapping>();
-        List<XPSpecialtyItem> _xpSpecialtyLookUps = new List<XPSpecialtyItem>();
+        List<XPLookUpItem> _xpSpecialtyLookUps = new List<XPLookUpItem>();        
         QueryItemsResult<SitecoreItemBase> _xmcSpecialtyLookUpsResult = new QueryItemsResult<SitecoreItemBase>();
+
+        List<XPLookUpItem> _xpDegreeTitlesLookUps = new List<XPLookUpItem>();
+        QueryItemsResult<SitecoreItemBase> _xmcDegreeTitlesResult = new QueryItemsResult<SitecoreItemBase>();
+
+        static readonly string[] _defaultFields = new string[] { "FacebookDescription", "FacebookImage", "TwitterTitle", "TwitterDescription",
+        "TwitterImage", "MetaRobotsNOINDEX", "MetaRobotsNOFOLLOW", "PageMetaTitle", "MetaDescription", "MetaKeywords", "DisplayTitle",
+        "DisplayDescription"
+        };
 
 
         public ContentMigrationController()
         {
             this.SitecoreGraphQLClient = Sitecore.DependencyInjection.ServiceLocator.ServiceProvider.GetService<ISitecoreGraphQLClient>();
             this.SideNavMigrationService = Sitecore.DependencyInjection.ServiceLocator.ServiceProvider.GetService<ISideNavMigrationService>();
-            this.TeachingSheetMigrationService = Sitecore.DependencyInjection.ServiceLocator.ServiceProvider.GetService<ITeachingSheetMigrationService>();
+            this.TeachingSheetMigrationService = Sitecore.DependencyInjection.ServiceLocator.ServiceProvider.GetService<ITeachingSheetMigrationService>();            
         }
 
         public ActionResult Index()
@@ -70,7 +76,7 @@ namespace CWXPTool.Controllers
                         TemplateId = template.ID.ToString(),
                         TemplateName = template.Name,
                         Fields = template.GetFields()
-                        .Where(field => !field.Name.StartsWith("__"))
+                        .Where(field => !field.Name.StartsWith("__") && !_defaultFields.Contains(field.Name))
                         .Select(x => new TemplateFieldModel()
                         {
                             Name = x.Name,
@@ -93,7 +99,7 @@ namespace CWXPTool.Controllers
             string workflowState = "Draft",
             bool createPages = false,
             bool syncComponents = false,
-            bool syncGlobalDatasources = false,
+            bool syncDatasources = false,
             string datasourceType = "",
             List<TemplateFieldMapping> mappingSelections = null,
             string environment = "DEV")
@@ -123,17 +129,21 @@ namespace CWXPTool.Controllers
                     Sitecore.Diagnostics.Log.Info($"rootItem: {rootItem.ID.ToString()}", this);
                     var items = rootItem.Axes
                     .GetDescendants()
-                            .Where(descendant => syncGlobalDatasources ? true : descendant.Template.BaseTemplates.Any(t => t.ID.ToString() == XP_Page_Template_Constants.XP_BASE_PAGE_TEMPLATEID))
+                            .Where(descendant => syncDatasources ? true : descendant.Template.BaseTemplates.Any(t => t.ID.ToString() == XP_Page_Template_Constants.XP_BASE_PAGE_TEMPLATEID))
                             .ToList();
                     items.Insert(0, rootItem); // include root item itself
                     var pageMappingItems = PageMappingUtility.LoadPageMappingsFromJson();
                     pageMappingItems = PageMappingUtility.SortPages(pageMappingItems);
 
-                    if (syncGlobalDatasources)
+                    if (syncDatasources)
                     {
-                        Sitecore.Diagnostics.Log.Info($"syncGlobalDatasources: {syncGlobalDatasources}", this);
+                        Sitecore.Diagnostics.Log.Info($"syncDatasources: {syncDatasources}", this);
                         if(datasourceType.Equals("Blogs"))
                             await SyncBlogData();
+                        else if (datasourceType.Equals("Providers"))
+                        {
+                            await SyncProviderData(items);
+                        }
                         return Json(syncResults);
                     }
 
@@ -193,6 +203,9 @@ namespace CWXPTool.Controllers
 
             _xpSpecialtyLookUps = GetSpecialtyLookUpsFromXP();
             _xmcSpecialtyLookUpsResult = await GetSpecialtyLookUpsFromXMC();
+            
+            _xpDegreeTitlesLookUps = GetDegreeTitlesLookUpsFromXP();
+            _xmcDegreeTitlesResult = await GetDegreeTitlesLookUpsFromXMC();
 
             for (int i = 0; i < batches; i++)
             {
@@ -319,9 +332,9 @@ namespace CWXPTool.Controllers
                                                     }
 
                                                     //Office Hours
-                                                    await CreateOfficeHoursDatasources(localDatasourceItems, matchedMapping.NEWURLPATH, officeHoursRootItemId, "Office Hours", Constants.OFFICE_HOURS_Details_FOLDER_TEMPLATEID);
+                                                    //await CreateOfficeHoursDatasources(localDatasourceItems, matchedMapping.NEWURLPATH, officeHoursRootItemId, "Office Hours", Constants.OFFICE_HOURS_Details_FOLDER_TEMPLATEID);
                                                     //Phone Hours
-                                                    await CreateOfficeHoursDatasources(localDatasourceItems, matchedMapping.NEWURLPATH, officeHoursRootItemId, "Phone Hours", Constants.OFFICE_HOURS_Details_FOLDER_TEMPLATEID);
+                                                    //await CreateOfficeHoursDatasources(localDatasourceItems, matchedMapping.NEWURLPATH, officeHoursRootItemId, "Phone Hours", Constants.OFFICE_HOURS_Details_FOLDER_TEMPLATEID);
                                                 }
                                             }
 
@@ -370,6 +383,119 @@ namespace CWXPTool.Controllers
 
             }
             return syncResults;
+        }
+
+        private async Task SyncProviderData(List<Item> allItems)
+        {
+            if (allItems == null || allItems.Count == 0)
+                return;
+
+            var physicianTemplateId = ID.Parse(XP_Page_Template_Constants.Physician);
+            var physicianPages = allItems
+                .Where(item => item.TemplateID == physicianTemplateId);
+
+            foreach (var physicianPage in physicianPages)
+            {
+                string xmcProviderPath = physicianPage.Paths.FullPath.Replace(Constants.XP_ProvidersRootPath, Constants.XMC_ProvidersRootPath);                
+                string education = string.Empty;
+                string residencies = string.Empty;
+                string fellowships = string.Empty;
+
+                var physicianChildFolders = allItems
+                    .Where(item => item.ParentID == physicianPage.ID);
+
+                if (!physicianChildFolders.Any())
+                    continue;
+
+                foreach (var sectionFolder in physicianChildFolders)
+                {
+                    var sectionItems = allItems
+                        .Where(item => item.ParentID == sectionFolder.ID);
+
+                    string sectionName = sectionFolder?.Name?.Trim() ?? string.Empty;
+                    string formattedSectionData;
+
+                    switch (sectionName)
+                    {
+                        case "Education":
+                            education = BuildItemList(sectionItems, includeEducationType: true);
+                            break;
+                        case "Fellowships":
+                            fellowships = BuildItemList(sectionItems);
+                            break;
+                        case "Residencies":
+                            residencies = BuildItemList(sectionItems);
+                            break;
+                        default:
+                            formattedSectionData = string.Empty;
+                            break;
+                    }                    
+                }
+
+                var xmcProvider = await SitecoreGraphQLClient.QuerySingleItemAsync(_environment, _accessToken, xmcProviderPath);
+                if(xmcProvider != null)
+                {
+                    var updateInput = new SitecoreUpdateItemInput()
+                    {
+                        ItemId = xmcProvider.ItemId,
+                        Fields = new List<SitecoreFieldInput>()
+                        {
+                            new SitecoreFieldInput()
+                            {
+                                Name = "education",
+                                Value = education
+                                },
+                            new SitecoreFieldInput()
+                            {
+                                Name = "residencies",
+                                Value = residencies
+                            },
+                            new SitecoreFieldInput()
+                            {
+                                Name = "fellowships",
+                                Value = fellowships
+                            }
+                        },
+                        Language = "en"
+                    };                                        
+                    await SitecoreGraphQLClient.UpdateBulkItemsBatchedAsync(new List<SitecoreUpdateItemInput>() { updateInput }, _environment, _accessToken, 10);
+                }
+            }
+        }
+
+        private string BuildItemList(IEnumerable<Item> items, bool includeEducationType = false)
+        {
+            if (items == null || !items.Any())
+                return string.Empty;
+
+            var formattedLines = new StringBuilder();
+
+            foreach (var recordItem in items)
+            {
+                var parts = new List<string>();
+
+                string graduationYear = recordItem["Year"];
+                string institutionName = recordItem["Institution Name"];
+
+                if (!string.IsNullOrWhiteSpace(graduationYear))
+                    parts.Add(graduationYear);
+
+                if (!string.IsNullOrWhiteSpace(institutionName))
+                    parts.Add(institutionName);
+
+                if (includeEducationType)
+                {
+                    var educationTypeField = (ReferenceField)recordItem.Fields["Education Type"];
+                    string educationTypeName = educationTypeField?.TargetItem?["Name"] ?? string.Empty;
+
+                    if (!string.IsNullOrWhiteSpace(educationTypeName))
+                        parts.Add(educationTypeName);
+                }
+
+                formattedLines.AppendLine(string.Join(", ", parts));
+            }
+
+            return formattedLines.ToString();
         }
 
         private async Task SyncBlogData()
@@ -444,7 +570,7 @@ namespace CWXPTool.Controllers
                     }
                 }
             }
-        }
+        }        
 
         private async Task CreateOfficeHoursDatasources(Item[] items, string newUrlPath, string dataItemId, string folderName, string templateId)
         {
@@ -775,9 +901,44 @@ namespace CWXPTool.Controllers
             if (displayDescription != null)
                 fields.Add(displayDescription);
 
-            var displayContent = await GetSitecoreFieldInput(sourcePageItem, "DisplayContent", "content");
-            if (displayContent != null)
-                fields.Add(displayContent);
+            if (!sourcePageItem.TemplateID.Equals(ID.Parse(XP_Page_Template_Constants.LOCATION)))
+            {
+                var displayContent = await GetSitecoreFieldInput(sourcePageItem, "DisplayContent", "content");
+                if (displayContent != null)
+                    fields.Add(displayContent);
+            }                
+
+            var facebookTitle = await GetSitecoreFieldInput(sourcePageItem, "FacebookTitle", "facebookTitle");
+            if(facebookTitle != null)
+                fields.Add(facebookTitle);
+
+            var facebookDescription = await GetSitecoreFieldInput(sourcePageItem, "FacebookDescription", "facebookDescription");
+            if (facebookDescription != null)
+                fields.Add(facebookDescription);
+
+            var facebookImage = await GetSitecoreFieldInput(sourcePageItem, "FacebookImage", "facebookImage");
+            if (facebookImage != null)
+                fields.Add(facebookImage);
+
+            var twitterTitle = await GetSitecoreFieldInput(sourcePageItem, "TwitterTitle", "twitterTitle");
+            if (twitterTitle != null)
+                fields.Add(twitterTitle);
+
+            var twitterDescription = await GetSitecoreFieldInput(sourcePageItem, "TwitterDescription", "twitterDescription");
+            if (twitterDescription != null)
+                fields.Add(twitterDescription);
+
+            var twitterImage = await GetSitecoreFieldInput(sourcePageItem, "TwitterImage", "twitterImage");
+            if (twitterImage != null)
+                fields.Add(twitterImage);
+
+            var metaRobotsNOINDEX = await GetSitecoreFieldInput(sourcePageItem, "MetaRobotsNOINDEX", "metaRobotsNOINDEX");
+            if (metaRobotsNOINDEX != null)
+                fields.Add(metaRobotsNOINDEX);
+
+            var metaRobotsNOFOLLOW = await GetSitecoreFieldInput(sourcePageItem, "MetaRobotsNOFOLLOW", "metaRobotsNOFOLLOW");
+            if (metaRobotsNOFOLLOW != null)
+                fields.Add(metaRobotsNOFOLLOW);
 
             if (mappingSelections != null && mappingSelections.Any())
             {
@@ -792,8 +953,7 @@ namespace CWXPTool.Controllers
                             Sitecore.Diagnostics.Log.Info($"Page context mapping field processing: {fieldMapping.XMField}/{fieldMapping.XPField}", this);
                             if (fields.Any(f => f.Name.Equals(fieldMapping.XMField, StringComparison.OrdinalIgnoreCase)))
                                 fields.RemoveAll(f => f.Name.Equals(fieldMapping.XMField, StringComparison.OrdinalIgnoreCase));
-                            var field = await GetSitecoreFieldInput(sourcePageItem, fieldMapping.XPField, fieldMapping.XMField,
-                                _xpSpecialtyLookUps, _xmcSpecialtyLookUpsResult);
+                            var field = await GetSitecoreFieldInput(sourcePageItem, fieldMapping.XPField, fieldMapping.XMField);
                             if (field != null)
                                 fields.Add(field);
                         }
@@ -813,7 +973,6 @@ namespace CWXPTool.Controllers
                 Sitecore.Diagnostics.Log.Info($"Page context fields syncing completed for {sourcePageItem.Page}|{pageMapping.NEWURLPATH}", this);                                
                 return result;
             }
-
 
             return false;
         }      
@@ -900,24 +1059,33 @@ namespace CWXPTool.Controllers
             }
         }
 
-        private async Task<SitecoreFieldInput> GetSitecoreFieldInput(PageDataModel sourcePageItem, string xpFieldName, string xmcFieldName,
-            List<XPSpecialtyItem> xpSpecialtyLookUps = null, QueryItemsResult<SitecoreItemBase> xmcSpecialtyLookUpsResult = null)
+        private async Task<SitecoreFieldInput> GetSitecoreFieldInput(PageDataModel sourcePageItem, string xpFieldName, string xmcFieldName)
         {
+            SitecoreFieldInput fieldInput = null;
+
+            if (xpFieldName.Equals("Accepting New Patients", StringComparison.OrdinalIgnoreCase))
+            {
+                fieldInput = new SitecoreFieldInput()
+                {
+                    Name = xmcFieldName,
+                    Value = "{A43FA26E-8F26-4603-B562-8179423D9A70}",
+                };
+                return fieldInput;
+            }
+
             var field = sourcePageItem.Fields.FirstOrDefault(x => x.Name == xpFieldName && !string.IsNullOrEmpty(x.Value));
 
             if (field == null)
                 return null;
 
             string fieldValue = field.Value;
-            string fieldType = field.Type?.ToLowerInvariant();
+            string fieldType = field.Type?.ToLowerInvariant();            
 
             if (string.IsNullOrEmpty(fieldValue))
-                return null;
-
-            SitecoreFieldInput fieldInput = null;
+                return null;                        
 
             switch (fieldType)
-            {
+            {                
                 case "treelist":
                 case "treelistex":
                     {
@@ -927,16 +1095,33 @@ namespace CWXPTool.Controllers
                             Item[] selectedItems = treelistField.GetItems();
                             switch (xpFieldName)
                             {
-                                case "Specialties":
+                                case "Specialties":                                    
                                     {
                                         var xpPageSpecialties = selectedItems?.Select(x => x.Name)?.ToList();
-                                        var currentPageSpecialties = await GetCurrentPageSpecialties(xpPageSpecialties, xmcSpecialtyLookUpsResult, xpSpecialtyLookUps);
-                                        if (currentPageSpecialties != null)
+                                        var xmcPageSpecialties = await GetCurrentLookUps(xpPageSpecialties, _xpSpecialtyLookUps,
+                                            _xmcSpecialtyLookUpsResult, XMC_Template_Constants.Specialty);
+                                        if (xmcPageSpecialties != null && xmcPageSpecialties.Any())
                                         {
                                             fieldInput = new SitecoreFieldInput()
                                             {
                                                 Name = xmcFieldName,
-                                                Value = string.Join("|", currentPageSpecialties.Select(x => SitecoreUtility.FormatGuid(x)))
+                                                Value = string.Join("|", xmcPageSpecialties.Select(x => SitecoreUtility.FormatGuid(x)))
+                                            };
+                                        }
+                                    }
+                                    break;
+                                case "Degree Titles":
+                                case "Additional Degree Titles":
+                                    {
+                                        var xpPagedegreeTitles = selectedItems?.Select(x => x.Name)?.ToList();
+                                        var xmcPageDegreeTitles = await GetCurrentLookUps(xpPagedegreeTitles, _xpDegreeTitlesLookUps,
+                                            _xmcDegreeTitlesResult, XMC_Template_Constants.DegreeTitles);
+                                        if (xmcPageDegreeTitles != null && xmcPageDegreeTitles.Any())
+                                        {
+                                            fieldInput = new SitecoreFieldInput()
+                                            {
+                                                Name = xmcFieldName,
+                                                Value = string.Join("|", xmcPageDegreeTitles.Select(x => SitecoreUtility.FormatGuid(x)))
                                             };
                                         }
                                     }
@@ -968,13 +1153,13 @@ namespace CWXPTool.Controllers
                                             }
                                         }
                                     }
-                                    break;
+                                    break;                                
                             }
                         }
                     }
-                    break;
+                    break;                
                 default:
-                    {
+                    {                        
                         fieldInput = new SitecoreFieldInput()
                         {
                             Name = xmcFieldName,
@@ -989,7 +1174,7 @@ namespace CWXPTool.Controllers
 
         private async Task<List<string>> GetCurrentPageSpecialties(List<string> xpPageSpecialties,
             QueryItemsResult<SitecoreItemBase> xmcSpecialtyLookUpsResult,
-            List<XPSpecialtyItem> xpSpecialtyLookUps)
+            List<XPLookUpItem> xpSpecialtyLookUps)
         {
             if (xpPageSpecialties != null && xpPageSpecialties.Any())
             {
@@ -1018,6 +1203,32 @@ namespace CWXPTool.Controllers
             return null;
         }
 
+        private async Task<List<string>> GetCurrentLookUps(List<string> xpValues, List<XPLookUpItem> xPLookUpItems,
+            QueryItemsResult<SitecoreItemBase> queryItemsResult, string template)
+        {
+            if (xpValues != null && xpValues.Any() &&
+                xPLookUpItems != null && xPLookUpItems.Any() &&
+                    queryItemsResult != null && queryItemsResult.Items != null && queryItemsResult.Items.Any())
+            {
+                var xmcLookups = queryItemsResult.Items;
+                foreach (var item in xPLookUpItems)
+                {
+                    if (!xmcLookups.Any(s => s.ItemName.Equals(item.ItemName, StringComparison.OrdinalIgnoreCase)))
+                    {
+                        var itemId = await CreateItem(queryItemsResult.ItemId, item.ItemName, template, item.Fields);
+                        xmcLookups.Add(new SitecoreItemBase()
+                        {
+                            ItemId = itemId,
+                            ItemName = item.ItemName,
+                            Path = $"{XMC_Datasource_Constants.Specialties}/{item.ItemName}",
+                        });
+                    }
+                }
+                return xmcLookups.Where(x => xpValues.Contains(x.ItemName, StringComparer.OrdinalIgnoreCase))?.Select(x => x.ItemId)?.ToList();
+            }
+            return null;
+        }
+
         private async Task<QueryItemsResult<SitecoreItemBase>> GetSpecialtyLookUpsFromXMC()
         {
             var specialties = await this.SitecoreGraphQLClient.QueryItemsAsync<SitecoreItemBase>(
@@ -1033,6 +1244,23 @@ namespace CWXPTool.Controllers
                 }
             );
             return specialties;
+        }
+
+        private async Task<QueryItemsResult<SitecoreItemBase>> GetDegreeTitlesLookUpsFromXMC()
+        {
+            var degreeTitles = await this.SitecoreGraphQLClient.QueryItemsAsync<SitecoreItemBase>(
+                _environment,
+                _accessToken,
+                XMC_Datasource_Constants.DegreeTitles, // e.g., "/sitecore/content/CW/childrens/Specialties"
+                new List<string>(), // No extra fields for now
+                jObj => new SitecoreItemBase
+                {
+                    ItemId = jObj["itemId"]?.ToString(),
+                    Path = jObj["path"]?.ToString(),
+                    ItemName = jObj["itemName"]?.ToString()
+                }
+            );
+            return degreeTitles;
         }
 
         private List<XPBlogResourceItem> GetBlogTagResourcesFromXP()
@@ -1085,7 +1313,7 @@ namespace CWXPTool.Controllers
         }
 
 
-        private List<XPSpecialtyItem> GetSpecialtyLookUpsFromXP()
+        private List<XPLookUpItem> GetSpecialtyLookUpsFromXP()
         {
             var specialtyRootItem = Sitecore.Context.Database.GetItem(XP_Datasource_Constants.Specialties);
             if (specialtyRootItem != null)
@@ -1094,7 +1322,7 @@ namespace CWXPTool.Controllers
                 if (specialtyItems != null)
                 {
                     return specialtyItems.Select(i =>
-                    new XPSpecialtyItem()
+                    new XPLookUpItem()
                     {
                         ItemId = i.ID.ToString(),
                         ItemName = i.Name,
@@ -1110,6 +1338,39 @@ namespace CWXPTool.Controllers
                             {
                                 Name = "specialtyLabelText",
                                 Value = i.Fields["Specialty Name"].Value,
+                            }
+                        }
+                    }).ToList();
+                }
+            }
+            return null;
+        }
+
+        private List<XPLookUpItem> GetDegreeTitlesLookUpsFromXP()
+        {
+            var degreeTitlesRootItem = Sitecore.Context.Database.GetItem(XP_Datasource_Constants.DegreeTitles);
+            if (degreeTitlesRootItem != null)
+            {
+                var degreeTitleItems = degreeTitlesRootItem.Axes.GetDescendants();
+                if (degreeTitleItems != null)
+                {
+                    return degreeTitleItems.Select(i =>
+                    new XPLookUpItem()
+                    {
+                        ItemId = i.ID.ToString(),
+                        ItemName = i.Name,
+                        Path = i.Paths.FullPath,
+                        Fields = new List<SitecoreFieldInput>()
+                        {
+                            new SitecoreFieldInput()
+                            {
+                                Name = "name",
+                                Value = i.Fields["Degree Title Name"].Value,
+                            },
+                            new SitecoreFieldInput()
+                            {
+                                Name = "value",
+                                Value = i.Fields["Degree Title Code"].Value,
                             }
                         }
                     }).ToList();

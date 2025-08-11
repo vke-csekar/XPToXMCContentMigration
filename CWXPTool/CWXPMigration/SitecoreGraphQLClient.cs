@@ -54,7 +54,7 @@ namespace CWXPMigration
                 var mutation = SitecoreMutationBuilder.CreateBulkItems(batch);
                 var jsonBody = JsonConvert.SerializeObject(mutation);
 
-                Sitecore.Diagnostics.Log.Info(jsonBody, this);
+                if (!string.IsNullOrEmpty(environment)) Sitecore.Diagnostics.Log.Info(jsonBody, this);
                 var request = new HttpRequestMessage(HttpMethod.Post, getEndpoint(environment));
                 request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
                 request.Content = new StringContent(jsonBody, Encoding.UTF8, "application/json");
@@ -118,7 +118,7 @@ namespace CWXPMigration
 
                     if (!response.IsSuccessStatusCode)
                     {
-                        Sitecore.Diagnostics.Log.Error($"Failed to update items: {response.StatusCode} - {responseContent}", this);
+                        if (!string.IsNullOrEmpty(environment)) Sitecore.Diagnostics.Log.Error($"Failed to update items: {response.StatusCode} - {responseContent}", this);
                         return false;
                     }
 
@@ -126,7 +126,7 @@ namespace CWXPMigration
 
                     if (json["errors"] != null)
                     {
-                        Sitecore.Diagnostics.Log.Error("GraphQL Errors: " + json["errors"], this);
+                        if (!string.IsNullOrEmpty(environment)) Sitecore.Diagnostics.Log.Error("GraphQL Errors: " + json["errors"], this);
                     }
 
                     var data = json["data"];
@@ -146,21 +146,21 @@ namespace CWXPMigration
                                 };
                                 updatedItems.Add(updatedItem);
 
-                                Sitecore.Diagnostics.Log.Info($"[GraphQLApiClient] [UPDATE] Item Updated: {updatedItem.Path}", this);
+                                if (!string.IsNullOrEmpty(environment)) Sitecore.Diagnostics.Log.Info($"[GraphQLApiClient] [UPDATE] Item Updated: {updatedItem.Path}", this);
                             }
                         }
                     }
 
 
 
-                    Sitecore.Diagnostics.Log.Info($"[GraphQLApiClient] [UPDATE] Items Updated: {updatedItems.Count}", this);
+                    if (!string.IsNullOrEmpty(environment)) Sitecore.Diagnostics.Log.Info($"[GraphQLApiClient] [UPDATE] Items Updated: {updatedItems.Count}", this);
                 }
 
                 return true;
             }
             catch (Exception ex)
             {
-                Sitecore.Diagnostics.Log.Error("Error performing bulk update: " + ex.Message, ex, this);
+                if (!string.IsNullOrEmpty(environment)) Sitecore.Diagnostics.Log.Error("Error performing bulk update: " + ex.Message, ex, this);
                 return false;
             }
         }
@@ -331,9 +331,10 @@ namespace CWXPMigration
 
         private string getEndpoint(string environment)
         {
+            if (string.IsNullOrEmpty(environment))
+                return "https://xmc-childrensho3e59-cw60b4-prod2126.sitecorecloud.io/sitecore/api/authoring/graphql/v1";
             string authoringUrl = Sitecore.Configuration.Settings.GetSetting($"CW.{environment}.AuthoringUrl")?.TrimEnd('/');
             return $"{authoringUrl}/sitecore/api/authoring/graphql/v1";
         }
-
     }
 }

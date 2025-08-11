@@ -11,16 +11,27 @@ namespace CWXPMigration
     {
         private static readonly HttpClient _httpClient = new HttpClient();
 
-        
         public static async Task<AuthResponse> GetAuthTokenAsync(string environment)
         {
-            Sitecore.Diagnostics.Log.Info($"Starting authentication at authUrl: {Constants.AuthUrl}", typeof(AuthHelper));
+            string client_id = string.Empty;
+            string client_secret = string.Empty;
+            if (!string.IsNullOrEmpty(environment)) {
+                client_id = Sitecore.Configuration.Settings.GetSetting($"CW.{environment}.ClientId");
+                client_secret = Sitecore.Configuration.Settings.GetSetting($"CW.{environment}.ClientSecret");
+            }
+            else
+            {
+                client_id = "9sDljVEboLPxzMbQpB9euHHtPgNPy4fr";
+                client_secret = "Nz6HL3keTQDresoTbqJgyPMv0ljQzgbtkIofuaAllCKjNiXl20m1ogimWtrFgZll";
+            }
+            
+            if(!string.IsNullOrEmpty(environment)) Sitecore.Diagnostics.Log.Info($"Starting authentication at authUrl: {Constants.AuthUrl}", typeof(AuthHelper));
 
             var formData = new Dictionary<string, string>
         {
             { "grant_type", "client_credentials" },
-            { "client_id", Sitecore.Configuration.Settings.GetSetting($"CW.{environment}.ClientId") },
-            { "client_secret", Sitecore.Configuration.Settings.GetSetting($"CW.{environment}.ClientSecret") },
+            { "client_id", client_id },
+            { "client_secret", client_secret },
             { "audience", Constants.Audience }
         };
 
@@ -50,12 +61,12 @@ namespace CWXPMigration
                     }
                     catch (Exception ex)
                     {
-                        Sitecore.Diagnostics.Log.Error(ex.Message, ex, typeof(AuthHelper));
+                        if (!string.IsNullOrEmpty(environment)) Sitecore.Diagnostics.Log.Error(ex.Message, ex, typeof(AuthHelper));
                         throw new Exception(message);
                     }
                 }
 
-                Sitecore.Diagnostics.Log.Info($"Authentication successful at authUrl: {Constants.AuthUrl}", typeof(AuthHelper));
+                if (!string.IsNullOrEmpty(environment)) Sitecore.Diagnostics.Log.Info($"Authentication successful at authUrl: {Constants.AuthUrl}", typeof(AuthHelper));
                 return JsonConvert.DeserializeObject<AuthResponse>(responseContent);
             }
             catch (Exception ex)

@@ -7,10 +7,10 @@
         <div class="row">
             <div class="col-md-8">
                 <!-- GLOBAL ITEM PATHS -->
-                <div class="card mb-4 p-3 border-0 shadow-sm">                    
+                <div class="card mb-4 p-3 border-0 shadow-sm">
                     <div class="mb-3">
                         <label for="itemPath" class="form-label fw-semibold">XP Item Path *</label>
-                        <input type="text" id="itemPath" name="itemPath" value="@Model.ItemPath" class="form-control" placeholder="/sitecore/content/..." required/>
+                        <input type="text" id="itemPath" name="itemPath" value="@Model.ItemPath" class="form-control" placeholder="/sitecore/content/..." required />
                     </div>
                     <div class="mb-3">
                         <label for="xmcItemPath" class="form-label fw-semibold">XMC Item Path (optional)</label>
@@ -59,7 +59,7 @@
                                 <div class="border rounded p-3 mt-4">
                                     <div class="form-check mb-2">
                                         <input class="form-check-input" type="checkbox" id="syncGlobalDatasources" name="syncGlobalDatasources">
-                                        <label class="form-check-label fw-semibold" for="syncGlobalDatasources">Sync Global Datasources</label>
+                                        <label class="form-check-label fw-semibold" for="syncGlobalDatasources">Sync Datasources</label>
                                     </div>
                                     <div class="mt-2">
                                         <label for="datasourceType" class="form-label fw-semibold">Datasource Type</label>
@@ -160,6 +160,13 @@
         border-top: none;
         padding: 1.5rem;
     }
+
+    /* Bigger checkboxes for XP mapping UI only */
+    #templateFieldsContainer input[type="checkbox"],
+    #templateFieldsContainer .select-all-fields {
+        transform: scale(1.4);
+        margin: 3px;
+    }
 </style>
 
 
@@ -169,279 +176,290 @@
 <script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
 
 <script>
+   $(document).ready(function () {
+
     let templateMap = {};
     let templateFieldsMap = {};
-    const locationFields = ["locationID", "locationName", "address1", "address2", "alternateCity", "city", "zip", "emailAddress",
-        "showInLocationListings", "displayPhysiciansAtThisLocation", "displayOpenScheduling", "openScheduleIntro", "epicDeptID", "npiNumber",
-        "ratingAndReviewDataId", "photo", "website", "specialties", "addressMapURL", "acceptingNewPatients",
-        "mobileVisiblePhoneNumber", "Latitude", "Longitude"];
+       const locationFields = [
+           "acceptingNewPatients",
+           "address1",
+           "address2",
+           "addressMapURL",
+           "alternateCity",
+           "city",
+           "content",
+           "displayOpenScheduling",
+           "displayPhysiciansAtThisLocation",
+           "emailAddress",
+           "epicDeptID",
+           "Latitude",
+           "locationID",
+           "locationName",
+           "Longitude",
+           "mobileVisiblePhoneNumber",
+           "npiNumber",
+           "openScheduleIntro",
+           "photo",
+           "ratingAndReviewDataId",
+           "showInLocationListings",
+           "specialties",
+           "website",
+           "zip"
+       ];
+
     let xmcTemplates = [
         {
-            id: "{6DE30456-2D7D-4D28-BF1B-2B2B8AA42E62}",
-            name: "Provider Profile",
-            fields: ["firstName", "middleName", "videoID", "positionTitles", "publications", "awards", "epicPhysicianID", "phone",
-                "lastName", "displayInPhysicianListing", "photo", "providerID", "certifications", "Title",
-                "locations"]
-        },
-        {
-            id: "{BB35FDA8-7E1F-48DC-A556-FA8FD89F96C2}",
-            name: "Specialty Care",
-            fields: locationFields
-        },
-        {
-            id: "{6274DC7B-91E7-4243-B5DA-96604F2EBBEA}",
-            name: "Primary Care",
-            fields: locationFields
-        },
-        {
-            id: "{7A4E0C65-C397-4E65-A941-7CF879C0B727}",
-            name: "Urgent Care",
-            fields: locationFields
-        },
-        {
-            id: "{FBAA34FA-9D09-4724-9C0B-F7F0860B35A8}",
-            name: "Mental Health",
-            fields: locationFields
-        },
-        {
-            id: "{CE453EDE-ED09-4928-80B0-143556AA52E8}",
-            name: "Hospital",
-            fields: locationFields
-        },
-        {
-            id: "{1B371DE2-704C-4D43-A94B-FC04B95DC6B8}",
-            name: "Location Page",
-            fields: locationFields
+            id: "{6DE30456-2D7D-4D28-BF1B-2B2B8AA42E62}", name: "Provider Profile", fields: [
+                "acceptingNewPatients",
+                "additionalDegreeTitles",
+                "awards",
+                "certifications",
+                "degreeTitles",
+                "displayInPhysicianListing",
+                "epicPhysicianID",
+                "firstName",
+                "gender",
+                "lastName",
+                "locations",
+                "middleName",
+                "npi",
+                "phone",
+                "photo",
+                "positionTitles",
+                "providerID",
+                "publications",
+                "specialties",
+                "Title",
+                "videoID"
+            ]
+ },
+        { id: "{BB35FDA8-7E1F-48DC-A556-FA8FD89F96C2}", name: "Specialty Care", fields: locationFields },
+        { id: "{6274DC7B-91E7-4243-B5DA-96604F2EBBEA}", name: "Primary Care", fields: locationFields },
+        { id: "{7A4E0C65-C397-4E65-A941-7CF879C0B727}", name: "Urgent Care", fields: locationFields },
+        { id: "{FBAA34FA-9D09-4724-9C0B-F7F0860B35A8}", name: "Mental Health", fields: locationFields },
+        { id: "{CE453EDE-ED09-4928-80B0-143556AA52E8}", name: "Hospital", fields: locationFields },
+        { id: "{1B371DE2-704C-4D43-A94B-FC04B95DC6B8}", name: "Location Page", fields: locationFields }
+       ];
+
+       function handleSyncOptionLogic() {
+           const isGlobalChecked = $('#syncGlobalDatasources').is(':checked');
+           const isCreateChecked = $('#createPages').is(':checked');
+           const isSyncChecked = $('#syncComponents').is(':checked');
+
+           if (isGlobalChecked) {
+               $('#createPages, #syncComponents').prop('checked', false).prop('disabled', true);
+               $('#getFieldsBtn').prop('disabled', true);
+           } else {
+               $('#createPages, #syncComponents').prop('disabled', false);
+               $('#getFieldsBtn').prop('disabled', false);
+           }
+
+           if (isCreateChecked || isSyncChecked) {
+               $('#syncGlobalDatasources').prop('checked', false).prop('disabled', true);
+               $('#datasourceType').prop('disabled', true);
+           } else {
+               $('#syncGlobalDatasources').prop('disabled', false);
+               $('#datasourceType').prop('disabled', false);
+           }
+       }
+
+       $('#createPages, #syncComponents, #syncGlobalDatasources').on('change', handleSyncOptionLogic);
+       $(document).ready(handleSyncOptionLogic);
+
+    // -------------------
+    // Handle template load
+    // -------------------
+    $('#getFieldsBtn').on('click', function () {
+        const parentPath = $('input[name="itemPath"]').val().trim();
+        if (!parentPath) {
+            alert("Please enter a valid parent path.");
+            return;
         }
-    ];
 
-    $(document).ready(function () {        
-
-        function handleSyncOptionLogic() {
-            const isGlobalChecked = $('#syncGlobalDatasources').is(':checked');
-            const isCreateChecked = $('#createPages').is(':checked');
-            const isSyncChecked = $('#syncComponents').is(':checked');
-
-            if (isGlobalChecked) {
-                $('#createPages, #syncComponents').prop('checked', false).prop('disabled', true);
-                $('#getFieldsBtn').prop('disabled', true);
-            } else {
-                $('#createPages, #syncComponents').prop('disabled', false);
-                $('#getFieldsBtn').prop('disabled', false);
-            }
-
-            if (isCreateChecked || isSyncChecked) {
-                $('#syncGlobalDatasources').prop('checked', false).prop('disabled', true);
-                $('#datasourceType').prop('disabled', true);                
-            } else {
-                $('#syncGlobalDatasources').prop('disabled', false);
-                $('#datasourceType').prop('disabled', false);                
-            }
-        }
-
-        $('#createPages, #syncComponents, #syncGlobalDatasources').on('change', handleSyncOptionLogic);
-        $(document).ready(handleSyncOptionLogic);
-
-
-        $('#getFieldsBtn').on('click', function () {
-            const parentPath = $('input[name="itemPath"]').val().trim();
-            if (!parentPath) {
-                alert("Please enter a valid parent path.");
-                return;
-            }
-
-            $.ajax({
-                url: '@Url.Action("GetTemplatesUnderPath", "ContentMigration")',
-                type: 'POST',
-                data: { parentPath },
-                success: function (templates) {
-                    if (!templates || templates.length === 0) {
-                        $('#templateSelectorContainer').hide();
-                        $('#templateFieldsContainer').html('<p class="text-danger">No templates found under this path.</p>');
-                        return;
-                    }
-
-                    templateMap = {};
-                    templateFieldsMap = {};
-                    const $select = $('#templateSelector').empty();
-                    templates.forEach(t => {
-                        templateMap[t.TemplateId] = t.TemplateName;
-                        templateFieldsMap[t.TemplateId] = t.Fields || [];
-                        $select.append(`<option value="${t.TemplateId}">${t.TemplateName}</option>`);
-                    });
-
-                    $('#templateSelectorContainer').show();
-
-                    $select.select2({
-                        placeholder: 'Select templates...',
-                        width: 'resolve'
-                    }).trigger('change');
-                },
-                error: function () {
-                    $('#templateFieldsContainer').html('<p class="text-danger">Error loading templates.</p>');
-                }
-            });
-        });
-
-        $('#templateSelector').on('change', function () {
-            const selectedTemplates = $(this).val();
-            const $container = $('#templateFieldsContainer').empty();
-
-            if (!selectedTemplates || selectedTemplates.length === 0) return;
-
-            selectedTemplates.forEach(templateId => {
-                const templateName = templateMap[templateId];
-                const fields = templateFieldsMap[templateId] || [];
-
-                const $section = $('<div class="mb-4 p-3 bg-light border rounded"></div>');
-                $section.append(`<label class="form-label fw-bold">${templateName} <span class="text-muted">Map to XMC Template</span></label>`);
-
-                const $xmSelect = $(`<select class="form-select mb-2 xm-template-dropdown" data-xptemplateid="${templateId}"></select>`);
-                $xmSelect.append(`<option value="">-- Select XMC Template --</option>`);
-
-                if (typeof xmcTemplates !== 'undefined') {
-                    xmcTemplates.forEach(xm => {
-                        $xmSelect.append(`<option value="${xm.id}">${xm.name}</option>`);
-                    });
+        $.ajax({
+            url: '@Url.Action("GetTemplatesUnderPath", "ContentMigration")',
+            type: 'POST',
+            data: { parentPath },
+            success: function (templates) {
+                if (!templates || templates.length === 0) {
+                    $('#templateSelectorContainer').hide();
+                    $('#templateFieldsContainer').html('<p class="text-danger">No templates found under this path.</p>');
+                    return;
                 }
 
-                $section.append($xmSelect);
+                templateMap = {};
+                templateFieldsMap = {};
+                const $select = $('#templateSelector').empty();
 
-                $section.append(`<label class="form-label mt-2">Select XP Template Fields</label>`);
-                const $xpFieldSelect = $(`<select multiple class="form-select field-multiselect" data-templateid="${templateId}"></select>`);
-                fields.forEach(field => {
-                    $xpFieldSelect.append(`<option value="${field.Name}||${field.Type}">${field.Name} (${field.Type})</option>`);
-                });
-                $section.append($xpFieldSelect);
+                // Sort templates alphabetically by TemplateName
+                templates.sort((a, b) => a.TemplateName.localeCompare(b.TemplateName));
 
-                const $fieldMapContainer = $(`<div class="mt-2 xm-field-map-container" data-xptemplateid="${templateId}"><label class="form-label">Map Fields to XM Cloud</label></div>`);
-                $section.append($fieldMapContainer);
+                templates.forEach(t => {
+                    // Sort fields alphabetically by Name before storing
+                    const sortedFields = (t.Fields || []).sort((a, b) => a.Name.localeCompare(b.Name));
 
-                $container.append($section);
-
-                $xpFieldSelect.select2({ placeholder: "Select fields", width: "resolve" });                
-                $xmSelect.select2({ width: "resolve" });
-            });
-        });
-
-        $(document).on('change', '.field-multiselect', function () {
-            const templateId = $(this).data('templateid');
-            const selectedFields = $(this).val() || [];
-            const $mapContainer = $(`.xm-field-map-container[data-xptemplateid="${templateId}"]`);
-            const xmTemplateId = $(`.xm-template-dropdown[data-xptemplateid="${templateId}"]`).val();
-            const xmTemplate = typeof xmcTemplates !== 'undefined' ? xmcTemplates.find(x => x.id === xmTemplateId) : null;
-
-            $mapContainer.empty().append('<label class="form-label">Map Fields to XMC Cloud</label>');
-
-            if (!xmTemplate || selectedFields.length === 0) return;
-
-            selectedFields.forEach(fieldVal => {
-                const [xpName, xpType] = fieldVal.split('||');
-                const $row = $('<div class="d-flex align-items-center mb-2"></div>');
-                $row.append(`<span class="me-2" style="min-width: 200px;">${xpName} (${xpType})</span>`);
-
-                const $xmFieldSelect = $('<select class="form-select xm-field-select" style="width: 200px;"></select>');
-                $xmFieldSelect.append('<option value="">-- Select XMC Field --</option>');
-                xmTemplate.fields.forEach(f => {
-                    $xmFieldSelect.append(`<option value="${f}">${f}</option>`);
+                    templateMap[t.TemplateId] = t.TemplateName;
+                    templateFieldsMap[t.TemplateId] = sortedFields;
+                    $select.append(`<option value="${t.TemplateId}">${t.TemplateName}</option>`);
                 });
 
-                $xmFieldSelect.attr('data-xpfield', xpName);
-                $row.append($xmFieldSelect);
-                $mapContainer.append($row);
-
-                $xmFieldSelect.select2({ width: "resolve" });
-            });
+                $('#templateSelectorContainer').show();
+                $select.select2({ placeholder: 'Select templates...', width: 'resolve' }).trigger('change');
+            },
+            error: function () {
+                $('#templateFieldsContainer').html('<p class="text-danger">Error loading templates.</p>');
+            }
         });
+    });
 
-        $(document).on('change', '.xm-template-dropdown', function () {
-            $(this).closest('.mb-4').find('.field-multiselect').trigger('change');
-        });
+    // -------------------
+    // Render table UI
+    // -------------------
+    $('#templateSelector').on('change', function () {
+        const selectedTemplates = $(this).val();
+        const $container = $('#templateFieldsContainer').empty();
+        if (!selectedTemplates || selectedTemplates.length === 0) return;
 
-        $('form').on('submit', function (e) {
-            e.preventDefault();
+        selectedTemplates.forEach(templateId => {
+            const templateName = templateMap[templateId];
+            const fields = templateFieldsMap[templateId] || [];
 
-            const $btn = $('#startSyncBtn');
-            const $spinner = $('#syncSpinner');
-            const $btnText = $('#syncBtnText');
+            const $section = $('<div class="mb-4 p-3 bg-light border rounded"></div>');
+            $section.append(`<label class="form-label fw-bold">${templateName} <span class="text-muted">Map to XMC Template</span></label>`);
 
-            $btn.prop('disabled', true);
-            $spinner.removeClass('d-none');
-            $btnText.text('Syncing...');
+            // XMC Template selector
+            const $xmSelect = $(`<select class="form-select mb-2 xm-template-dropdown" data-xptemplateid="${templateId}"></select>`);
+            $xmSelect.append(`<option value="">-- Select XMC Template --</option>`);
+            xmcTemplates.forEach(xm => $xmSelect.append(`<option value="${xm.id}">${xm.name}</option>`));
+            $section.append($xmSelect);
 
-            const selectedFieldData = [];
+            // Table for XP fields
+            const $table = $(`
+                <table class="table table-sm table-bordered mt-2">
+                    <thead>
+                        <tr>
+                            <th style="width:50px;"><input type="checkbox" class="select-all-fields"></th>
+                            <th>XP Field</th>
+                            <th>XMC Field</th>
+                        </tr>
+                    </thead>
+                    <tbody></tbody>
+                </table>
+            `);
 
-            $('#templateFieldsContainer .field-multiselect').each(function () {
-                const templateId = $(this).data('templateid');
-                const selectedOptions = $(this).val();
-                const xmTemplateId = $(`.xm-template-dropdown[data-xptemplateid="${templateId}"]`).val();
-
-                if (selectedOptions && selectedOptions.length > 0) {
-                    const mappings = [];
-                    selectedOptions.forEach(value => {
-                        const [xpName, xpType] = value.split('||');
-                        const xmField = $(`.xm-field-map-container[data-xptemplateid="${templateId}"] select[data-xpfield="${xpName}"]`).val();
-                        mappings.push({
-                            XPField: xpName,
-                            XPType: xpType,
-                            XMField: xmField
-                        });
-                    });
-
-                    selectedFieldData.push({
-                        TemplateId: templateId,
-                        XMTemplateId: xmTemplateId,
-                        FieldMappings: mappings
-                    });
-                }
+            fields.forEach(field => {
+                const $row = $('<tr></tr>');
+                // Checkbox checked by default
+                $row.append(`<td><input type="checkbox" class="xp-field-checkbox" checked data-fieldname="${field.Name}" data-fieldtype="${field.Type}" style="transform: scale(1.3);"></td>`);
+                $row.append(`<td>${field.Name} (${field.Type})</td>`);
+                $row.append(`<td><select class="form-select xm-field-select"><option value="">-- Select XMC Field --</option></select></td>`);
+                $table.find('tbody').append($row);
             });
 
-            $('#mappingSelections').val(JSON.stringify(selectedFieldData));
+            $section.append($table);
+            $container.append($section);
 
-            $.ajax({
-                url: '@Url.Action("SyncContent", "ContentMigration")',
-                type: 'POST',
-                data: {
-                    itemPath: $('input[name="itemPath"]').val().trim(),
-                    xmcItemPath: $('input[name="xmcItemPath"]').val().trim(),
-                    workflowState: $('#workflowState').val(),
-                    language: $('#language').val(),
-                    createPages: $('#createPages').is(':checked'),
-                    syncComponents: $('#syncComponents').is(':checked'), 
-                    syncGlobalDatasources: $('#syncGlobalDatasources').is(':checked'),
-                    datasourceType: $('#datasourceType').val(),
-                    mappingSelections: selectedFieldData,
-                    environment: $('#environment').val(),                                                   
-                },
-                success: function (response) {
-                    if (!response || response.length === 0) {
-                        $('#syncResultContainer').html('<p class="text-warning">No sync results returned.</p>');
-                        return;
+            // Select All handler
+            $table.find('.select-all-fields').on('change', function () {
+                const isChecked = $(this).is(':checked');
+                $table.find('.xp-field-checkbox').prop('checked', isChecked);
+            });
+
+            // Populate XMC fields when template changes
+            $xmSelect.on('change', function () {
+                const xmTemplateId = $(this).val();
+                const xmTemplate = xmcTemplates.find(x => x.id === xmTemplateId);
+                $table.find('.xm-field-select').each(function () {
+                    $(this).empty().append('<option value="">-- Select XMC Field --</option>');
+                    if (xmTemplate) {
+                        xmTemplate.fields.forEach(f => $(this).append(`<option value="${f}">${f}</option>`));
                     }
-
-                    let html = '<div class="mt-3"><h5>Sync Results:</h5><ul class="list-group">';
-
-                    response.forEach(item => {
-                        html += `<li class="list-group-item">
-                            <strong>${item.SyncedItemPath}</strong><br>
-                            Status: ${item.Success ? '<span class="text-success">Success</span>' : '<span class="text-danger">Failed</span>'}
-                            ${item.Message ? `<br><em>${item.Message}</em>` : ''}
-                            ${item.Errors && item.Errors.length ? '<br><strong>Errors:</strong><ul>' + item.Errors.map(e => `<li>${e}</li>`).join('') + '</ul>' : ''}
-                        </li>`;
-                    });
-
-                    html += '</ul></div>';
-                    $('#syncResultContainer').html(html);
-                },
-                error: function () {
-                    $('#templateFieldsContainer').html('<p class="text-danger">Error loading templates.</p>');
-                },
-                complete: function () {
-                    $btn.prop('disabled', false);
-                    $spinner.addClass('d-none');
-                    $btnText.text('Start Sync');
-                }
+                });
             });
         });
     });
+
+    // -------------------
+    // Submit logic
+    // -------------------
+    $('form').on('submit', function (e) {
+        e.preventDefault();
+
+        const $btn = $('#startSyncBtn');
+        const $spinner = $('#syncSpinner');
+        const $btnText = $('#syncBtnText');
+
+        $btn.prop('disabled', true);
+        $spinner.removeClass('d-none');
+        $btnText.text('Syncing...');
+        const selectedFieldData = [];
+        $('#templateFieldsContainer > div').each(function () {
+            const $section = $(this);
+            const templateId = $section.find('.xm-template-dropdown').data('xptemplateid');
+            const xmTemplateId = $section.find('.xm-template-dropdown').val();
+            const mappings = [];
+
+            $section.find('.xp-field-checkbox:checked').each(function () {
+                const xpName = $(this).data('fieldname');
+                const xpType = $(this).data('fieldtype');
+                const xmField = $(this).closest('tr').find('.xm-field-select').val();
+                mappings.push({ XPField: xpName, XPType: xpType, XMField: xmField });
+            });
+
+            if (mappings.length > 0) {
+                selectedFieldData.push({
+                    TemplateId: templateId,
+                    XMTemplateId: xmTemplateId,
+                    FieldMappings: mappings
+                });
+            }
+        });
+
+        $('#mappingSelections').val(JSON.stringify(selectedFieldData));
+
+        $.ajax({
+            url: '@Url.Action("SyncContent", "ContentMigration")',
+            type: 'POST',
+            data: {
+                itemPath: $('input[name="itemPath"]').val().trim(),
+                xmcItemPath: $('input[name="xmcItemPath"]').val().trim(),
+                workflowState: $('#workflowState').val(),
+                language: $('#language').val(),
+                createPages: $('#createPages').is(':checked'),
+                syncComponents: $('#syncComponents').is(':checked'),
+                syncDatasources: $('#syncGlobalDatasources').is(':checked'),
+                datasourceType: $('#datasourceType').val(),
+                mappingSelections: selectedFieldData,
+                environment: $('#environment').val(),
+            },
+            success: function (response) {
+                if (!response || response.length === 0) {
+                    $('#syncResultContainer').html('<p class="text-warning">No sync results returned.</p>');
+                    return;
+                }
+                let html = '<div class="mt-3"><h5>Sync Results:</h5><ul class="list-group">';
+                response.forEach(item => {
+                    html += `<li class="list-group-item">
+                        <strong>${item.SyncedItemPath}</strong><br>
+                        Status: ${item.Success ? '<span class="text-success">Success</span>' : '<span class="text-danger">Failed</span>'}
+                        ${item.Message ? `<br><em>${item.Message}</em>` : ''}
+                        ${item.Errors && item.Errors.length ? '<br><strong>Errors:</strong><ul>' + item.Errors.map(e => `<li>${e}</li>`).join('') + '</ul>' : ''}
+                    </li>`;
+                });
+                html += '</ul></div>';
+                $('#syncResultContainer').html(html);
+            },
+            error: function () {
+                $('#syncResultContainer').html('<p class="text-danger">Error syncing content.</p>');
+            },
+            complete: function () {
+                $btn.prop('disabled', false);
+                $spinner.addClass('d-none');
+                $btnText.text('Start Sync');
+            }
+        });
+    });
+
+});
+
 </script>

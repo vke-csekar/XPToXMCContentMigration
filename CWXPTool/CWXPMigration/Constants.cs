@@ -14,6 +14,7 @@
         public const string SideNavSection = "{72BB023A-CE3E-4523-B4AA-16E54561D8D4}";        
         public const string UserScriptsFoldlder = "{2BA6ED28-E859-4B24-9ECD-4C5D49B2C947}";
         public const string Specialty = "{4600FF49-3190-42A9-A736-289124E9A0A3}";
+        public const string DegreeTitles = "{0FCE0A23-85EA-4C6A-8B9A-F84418BF6776}";
         public const string OfficeHoursFolder = "{FED0CCA2-CE0A-4426-84D0-747BC00629D2}";
         public const string TextLinkList = "{4902A5EC-B0ED-46FC-9919-29D036E505B9}";
         public const string LinkGroup = "{3DEC66E0-B69B-4808-80BB-6CCEEF96939E}";
@@ -59,6 +60,8 @@
     public class XP_Page_Template_Constants
     {
         public const string XP_BASE_PAGE_TEMPLATEID = "{8F3DE639-B021-42CE-AE90-0E07BECB6B03}";
+        public const string LOCATION = "{F7B88F3A-10EB-4226-BF3B-041F95ABA0E9}";
+        public const string Physician = "{51E1C4BE-50D2-4802-AA8F-BE77B4C66FC8}";
     }
 
     public static class XP_RenderingName_Constants
@@ -89,12 +92,14 @@
     {
         public const string StoryTags = "/sitecore/content/CHW/Content/Page Content/News Hub/Story Tags";
         public const string Specialties = "/sitecore/content/CHW/Content/Global Content/MDStaff/Taxonomies/Specialties";
+        public const string DegreeTitles = "/sitecore/content/CHW/Content/Global Content/MDStaff/Lookups/Degree Titles";
     }
 
     public class XMC_Datasource_Constants
     {
         public const string StoryTags = "/sitecore/content/CW/childrens/Data/Blog/Tags";
         public const string Specialties = "/sitecore/content/CW/childrens/Settings/MDStaff/Specialties";
+        public const string DegreeTitles = "/sitecore/content/CW/Global/MDStaff/Lookups/Degree Titles";
     }
 
     public static class Constants
@@ -110,5 +115,10 @@
 
         public const string SITECORE_XP_PRFIX = "/sitecore/content/CHW/Home/";
         public const string XP_MIGRATION_LOG_JSON_PATH = "F:\\Migration\\CWXPMigrationContent.json";
+
+        public const string BlogRootPath = "/sitecore/content/CW/childrens/Home/At-Every-Turn/Stories";
+        
+        public const string XMC_ProvidersRootPath = "/sitecore/content/CW/childrens/Home/Providers";
+        public const string XP_ProvidersRootPath = "/sitecore/content/CHW/Home/Physician Directory";               
     }
 }

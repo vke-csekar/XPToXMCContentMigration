@@ -97,6 +97,7 @@ namespace CWXPMigration.Models
         public string PAGETEMPLATE { get; set; }
         public string PAGETEMPLATEID { get; set; }
         public string NetNewCopy { get; set; }
+        public string RedirectEntry { get; set; }
     }
 
     public class AuthResponse
@@ -140,7 +141,7 @@ namespace CWXPMigration.Models
         public string Name { get; set; }
     }
 
-    public class XPSpecialtyItem : SitecoreItemBase
+    public class XPLookUpItem : SitecoreItemBase
     {
         public List<SitecoreFieldInput> Fields { get; set; }
     }
