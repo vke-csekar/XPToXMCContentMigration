@@ -1170,38 +1170,7 @@ namespace CWXPTool.Controllers
             }
 
             return fieldInput;
-        }
-
-        private async Task<List<string>> GetCurrentPageSpecialties(List<string> xpPageSpecialties,
-            QueryItemsResult<SitecoreItemBase> xmcSpecialtyLookUpsResult,
-            List<XPLookUpItem> xpSpecialtyLookUps)
-        {
-            if (xpPageSpecialties != null && xpPageSpecialties.Any())
-            {
-                if (xpSpecialtyLookUps != null && xpSpecialtyLookUps.Any())
-                {
-                    if (xmcSpecialtyLookUpsResult != null && xmcSpecialtyLookUpsResult.Items != null && xmcSpecialtyLookUpsResult.Items.Any())
-                    {
-                        var xmcSpecialtyLookUps = xmcSpecialtyLookUpsResult.Items;
-                        foreach (var item in xpSpecialtyLookUps)
-                        {
-                            if (!xmcSpecialtyLookUps.Any(s => s.ItemName.Equals(item.ItemName, StringComparison.OrdinalIgnoreCase)))
-                            {
-                                var itemId = await CreateItem(xmcSpecialtyLookUpsResult.ItemId, item.ItemName, XMC_Template_Constants.Specialty, item.Fields);
-                                xmcSpecialtyLookUps.Add(new SitecoreItemBase()
-                                {
-                                    ItemId = itemId,
-                                    ItemName = item.ItemName,
-                                    Path = $"{XMC_Datasource_Constants.Specialties}/{item.ItemName}",
-                                });
-                            }
-                        }
-                        return xmcSpecialtyLookUps.Where(x => xpPageSpecialties.Contains(x.ItemName, StringComparer.OrdinalIgnoreCase))?.Select(x => x.ItemId)?.ToList();
-                    }
-                }
-            }
-            return null;
-        }
+        }        
 
         private async Task<List<string>> GetCurrentLookUps(List<string> xpValues, List<XPLookUpItem> xPLookUpItems,
             QueryItemsResult<SitecoreItemBase> queryItemsResult, string template)

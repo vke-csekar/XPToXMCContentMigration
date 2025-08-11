@@ -99,7 +99,7 @@
     {
         public const string StoryTags = "/sitecore/content/CW/childrens/Data/Blog/Tags";
         public const string Specialties = "/sitecore/content/CW/childrens/Settings/MDStaff/Specialties";
-        public const string DegreeTitles = "/sitecore/content/CW/Global/MDStaff/Lookups/Degree Titles";
+        public const string DegreeTitles = "/sitecore/content/CW/Global/MDStaff/Lookups/Degree Titles";        
     }
 
     public static class Constants
