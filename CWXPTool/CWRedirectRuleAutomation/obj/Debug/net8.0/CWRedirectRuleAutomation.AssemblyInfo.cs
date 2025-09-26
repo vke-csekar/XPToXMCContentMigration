@@ -14,7 +14,7 @@ using System.Reflection;
 [assembly: System.Reflection.AssemblyCompanyAttribute("CWRedirectRuleAutomation")]
 [assembly: System.Reflection.AssemblyConfigurationAttribute("Debug")]
 [assembly: System.Reflection.AssemblyFileVersionAttribute("1.0.0.0")]
-[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+bf0b6acd0cd5dd294a659721813ebbb5f6efd247")]
+[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+f7af6ff3ed16e0ffe4c33a6159824ce797753c8a")]
 [assembly: System.Reflection.AssemblyProductAttribute("CWRedirectRuleAutomation")]
 [assembly: System.Reflection.AssemblyTitleAttribute("CWRedirectRuleAutomation")]
 [assembly: System.Reflection.AssemblyVersionAttribute("1.0.0.0")]

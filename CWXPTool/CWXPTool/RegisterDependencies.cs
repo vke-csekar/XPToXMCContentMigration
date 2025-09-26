@@ -13,6 +13,7 @@ namespace CWXPTool
             services.AddTransient<ISitecoreGraphQLClient, SitecoreGraphQLClient>();
             services.AddTransient<ISideNavMigrationService, SideNavMigrationService>();
             services.AddTransient<ITeachingSheetMigrationService, TeachingSheetMigrationService>();
+            services.AddTransient<IELearningCenterMigrationService, ELearningCenterMigrationService>();
         }
     }
 }

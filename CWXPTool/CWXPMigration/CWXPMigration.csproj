@@ -168,6 +168,7 @@
     <Compile Include="RichTextSplitter.cs" />
     <Compile Include="Services\BaseMigrationService.cs" />
     <Compile Include="Services\SideNavMigrationService.cs" />
+    <Compile Include="Services\ELearningCenterMigrationService.cs" />
     <Compile Include="Services\TeachingSheetMigrationService.cs" />
     <Compile Include="SitecoreGraphQLClient.cs" />
     <Compile Include="SitecoreMutationBuilder.cs" />

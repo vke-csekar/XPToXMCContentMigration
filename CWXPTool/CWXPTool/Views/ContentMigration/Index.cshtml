@@ -66,6 +66,7 @@
                                         <select id="datasourceType" name="datasourceType" class="form-select">
                                             <option value="Blogs" selected>Blogs</option>
                                             <option value="Providers">Providers</option>
+                                            <option value="Metadata">Metadata</option>
                                         </select>
                                     </div>
                                 </div>
@@ -238,7 +239,12 @@
         { id: "{7A4E0C65-C397-4E65-A941-7CF879C0B727}", name: "Urgent Care", fields: locationFields },
         { id: "{FBAA34FA-9D09-4724-9C0B-F7F0860B35A8}", name: "Mental Health", fields: locationFields },
         { id: "{CE453EDE-ED09-4928-80B0-143556AA52E8}", name: "Hospital", fields: locationFields },
-        { id: "{1B371DE2-704C-4D43-A94B-FC04B95DC6B8}", name: "Location Page", fields: locationFields }
+        { id: "{1B371DE2-704C-4D43-A94B-FC04B95DC6B8}", name: "Location Page", fields: locationFields },
+        { id: "{C8749C06-CA6C-4630-83E0-EA1A9A973907}", name: "General Page T1", fields: [] },
+        {
+            id: "{2400C94A-5BB1-4F69-85CC-3AD185DC4BCA}", name: "General Page T2", fields: ["Title", "Description", "content" ]
+        },
+        { id: "{39EBED3F-5965-4A68-9A4C-45E7D29043C8}", name: "TeachingSheets", fields: [] }
        ];
 
        function handleSyncOptionLogic() {
@@ -397,22 +403,27 @@
             const $section = $(this);
             const templateId = $section.find('.xm-template-dropdown').data('xptemplateid');
             const xmTemplateId = $section.find('.xm-template-dropdown').val();
-            const mappings = [];
+            const mappings = [];            
 
-            $section.find('.xp-field-checkbox:checked').each(function () {
-                const xpName = $(this).data('fieldname');
-                const xpType = $(this).data('fieldtype');
-                const xmField = $(this).closest('tr').find('.xm-field-select').val();
-                mappings.push({ XPField: xpName, XPType: xpType, XMField: xmField });
-            });
+            const $checkedBoxes = $section.find('.xp-field-checkbox:checked');
 
-            if (mappings.length > 0) {
-                selectedFieldData.push({
-                    TemplateId: templateId,
-                    XMTemplateId: xmTemplateId,
-                    FieldMappings: mappings
+            if ($checkedBoxes.length > 0) {
+                $checkedBoxes.each(function () {
+                    const xpName = $(this).data('fieldname') || null;
+                    const xpType = $(this).data('fieldtype') || null;
+                    const xmField = $(this).closest('tr').find('.xm-field-select').val() || null;
+
+                    if (xpName && xpType && xmField) {
+                        mappings.push({ XPField: xpName, XPType: xpType, XMField: xmField });
+                    }
                 });
             }
+
+            selectedFieldData.push({
+                TemplateId: templateId,
+                XMTemplateId: xmTemplateId,
+                FieldMappings: mappings
+            });
         });
 
         $('#mappingSelections').val(JSON.stringify(selectedFieldData));

@@ -1,12 +1,16 @@
 ﻿using CWXPMigration;
 using CWXPMigration.Models;
+using HtmlAgilityPack;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 using System;
 using System.Collections.Generic;
+using System.IO;
+using System.Linq;
 using System.Net.Http;
 using System.Net.Http.Headers;
 using System.Text;
+using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 
 namespace CWXPMigrationMockTesting
@@ -16,8 +20,41 @@ namespace CWXPMigrationMockTesting
         private static readonly HttpClient _httpClient = new HttpClient();
         static void Main(string[] args)
         {
-            // Call the async method and wait synchronously
-            RunAsync().GetAwaiter().GetResult();
+            var rte = @"<h1>(Terapia debajo de la lengua)</h1>
+<h2 class=""chw-h2"">&iquest;Qu&eacute; es la inmunoterapia sublingual?</h2>
+<p>La terapia sublingual es un medicamento que se administra debajo de la lengua . El medicamento puede reducir los s&iacute;ntomas de alergia mediante el fortalecimiento de las defensas<br />
+de su cuerpo.</p>
+<h2 class=""chw-h2"">&iquest;C&oacute;mo funcionan las tabletas de inmunoterapia sublingual?</h2>
+<p>Las tabletas tardan unos meses en empezar a hacer efecto. Las tabletas pueden disminuir los signos de alergias como:</p>
+<ul>
+    <li>Picaz&oacute;n en los ojos, nariz</li>
+    <li>Lagrimeo en los ojos</li>
+    <li>Tos</li>
+    <li>Estornudos</li>
+    <li>Congesti&oacute;n nasal</li>
+    <li>Escurrimiento nasal.</li>
+</ul>
+<p>Es posible que todav&iacute;a presente algunos s&iacute;ntomas de alergia incluso despu&eacute;s de que las tabletas comiencen a funcionar.</p>
+<h2 class=""chw-h2"">&iquest;A qui&eacute;n se le deben dar las tabletas de inmunoterapia sublingual?</h2>
+<p>A cualquier persona que:</p>
+<ul>
+    <li>Tenga alergias al pasto, los &aacute;caros del polvo o la ambros&iacute;a.</li>
+    <li>Se someta a an&aacute;lisis de piel o de sangre que muestren que tiene estas alergias.</li>
+    <li>Haya intentado evitar el polen o los &aacute;caros del polvo sin &eacute;xito.</li>
+    <li>No haya sentido alivio con los medicamentos para la alergia.</li>
+    <li>Tenga demasiados efectos secundarios del medicamento para la alergia.</li>
+    <li>No pueda ir a la cl&iacute;nica para recibir vacunas contra la alergia.</li>
+</ul>
+<h2 class=""chw-h2"">&iquest;C&oacute;mo empezamos a tomar las tabletas?</h2>
+<p>
+La <strong>primera tableta se administra en la cl&iacute;nica por seguridad. Tendr&aacute; que quedarse durante&nbsp;</strong>30 minutos despu&eacute;s de que le den el medicamento.</p>";
+            List<RichTextSection> jumpLinkSections = new List<RichTextSection>();
+            var contents = RichTextSplitter.SplitByH2(rte, "en");
+            if (contents != null && contents.Any())
+            {
+                jumpLinkSections.AddRange(contents);
+                var finalHtml = RichTextSplitter.AddIdAttributeToAllH2(rte);                
+            }            
         }
 
         static async Task RunAsync()

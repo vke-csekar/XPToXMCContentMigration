@@ -100,6 +100,16 @@ namespace CWXPMigration.Models
         public string RedirectEntry { get; set; }
     }
 
+    public class MetaMapping
+    {
+        public string CurrentUrl { get; set; } = "";
+        public string NewUrlPath { get; set; } = "";        
+        public string CurrentMetaDescription { get; set; } = "";
+        public string RecommendedMetaDescription { get; set; } = "";
+        public string CurrentMetaTitle { get; set; } = "";
+        public string RecommendedMetaTitle { get; set; } = "";
+    }
+
     public class AuthResponse
     {
         [Newtonsoft.Json.JsonProperty("access_token")]
@@ -139,6 +149,12 @@ namespace CWXPMigration.Models
         public string ItemId { get; set; }
         public string Path { get; set; }
         public string Name { get; set; }
+        public string TemplateId { get; set; }
+    }
+
+    public class Template
+    {
+        public string TemplateId { get; set; }
     }
 
     public class XPLookUpItem : SitecoreItemBase
@@ -202,11 +218,16 @@ namespace CWXPMigration.Models
         public string ItemName { get; set; }
     }
 
+    public class XMCBlogPage: SitecoreItemBase
+    {
+        public string Content { get;set; }
+    }
+
     public class PageInfo
     {
         public string EndCursor { get; set; }
         public bool HasNextPage { get; set; }
-    }
+    }    
 
     public class QueryItemsResult<T> : SitecoreItemBase
     {

@@ -8,10 +8,15 @@ using Sitecore.Data;
 using Sitecore.Data.Fields;
 using Sitecore.Data.Items;
 using Sitecore.Data.Managers;
+using Sitecore.Data.Query;
+using Sitecore.Mvc.Extensions;
+using Sitecore.Xml.Xsl;
 using System;
 using System.Collections.Generic;
 using System.Data;
+using System.IO;
 using System.Linq;
+using System.Reflection;
 using System.Text;
 using System.Threading.Tasks;
 using System.Web.Mvc;
@@ -25,6 +30,7 @@ namespace CWXPTool.Controllers
         public ISitecoreGraphQLClient SitecoreGraphQLClient { get; set; }
         public ISideNavMigrationService SideNavMigrationService { get; set; }
         public ITeachingSheetMigrationService TeachingSheetMigrationService { get; set; }
+        public IELearningCenterMigrationService ELearningCenterMigrationService { get; set; }
 
         string _environment = string.Empty;
         string _accessToken = string.Empty;
@@ -45,7 +51,8 @@ namespace CWXPTool.Controllers
         {
             this.SitecoreGraphQLClient = Sitecore.DependencyInjection.ServiceLocator.ServiceProvider.GetService<ISitecoreGraphQLClient>();
             this.SideNavMigrationService = Sitecore.DependencyInjection.ServiceLocator.ServiceProvider.GetService<ISideNavMigrationService>();
-            this.TeachingSheetMigrationService = Sitecore.DependencyInjection.ServiceLocator.ServiceProvider.GetService<ITeachingSheetMigrationService>();            
+            this.TeachingSheetMigrationService = Sitecore.DependencyInjection.ServiceLocator.ServiceProvider.GetService<ITeachingSheetMigrationService>();
+            this.ELearningCenterMigrationService = Sitecore.DependencyInjection.ServiceLocator.ServiceProvider.GetService<IELearningCenterMigrationService>();
         }
 
         public ActionResult Index()
@@ -61,10 +68,13 @@ namespace CWXPTool.Controllers
             var parentItem = Sitecore.Context.Database.GetItem(parentPath);
             if (parentItem == null) return Json(templates);
 
-            var usedTemplateIds = parentItem.Axes.GetDescendants()
-                .Where(descendant => descendant.Template.BaseTemplates.Any(t => t.ID.ToString() == XP_Page_Template_Constants.XP_BASE_PAGE_TEMPLATEID))
+            List<ID> usedTemplateIds = parentItem.Axes.GetDescendants()
+                .Where(descendant => descendant.Template.BaseTemplates.Any(t => t.ID.ToString() == 
+                XP_Page_Template_Constants.XP_BASE_PAGE_TEMPLATEID || t.ID.ToString() == XP_Page_Template_Constants.XP_CHWF_BASE_PAGE_TEMPLATEID))
                 .Select(i => i.TemplateID)
-                .Distinct();
+                .Distinct().ToList();
+
+            usedTemplateIds.Insert(0, parentItem.TemplateID);
 
             foreach (var templateId in usedTemplateIds)
             {
@@ -127,11 +137,17 @@ namespace CWXPTool.Controllers
                 if (rootItem != null)
                 {
                     Sitecore.Diagnostics.Log.Info($"rootItem: {rootItem.ID.ToString()}", this);
-                    var items = rootItem.Axes
-                    .GetDescendants()
-                            .Where(descendant => syncDatasources ? true : descendant.Template.BaseTemplates.Any(t => t.ID.ToString() == XP_Page_Template_Constants.XP_BASE_PAGE_TEMPLATEID))
+                    var items = rootItem.Axes.GetDescendants()
+                            .Where(descendant => syncDatasources ? true : 
+                            descendant.TemplateID.ToString().Equals("{1F627E91-79F2-4CE5-A18A-BF33972B2072}") ||
+                            descendant.TemplateID.ToString().Equals(XP_Page_Template_Constants.XP_CHWF_BASE_PAGE_TEMPLATEID) ||
+                            descendant.Template.BaseTemplates.Any(t => t.ID.ToString() == XP_Page_Template_Constants.XP_BASE_PAGE_TEMPLATEID))
                             .ToList();
-                    items.Insert(0, rootItem); // include root item itself
+                    if(rootItem.TemplateID.ToString().Equals("{1F627E91-79F2-4CE5-A18A-BF33972B2072}") ||  rootItem.TemplateID.ToString().Equals(XP_Page_Template_Constants.XP_CHWF_BASE_PAGE_TEMPLATEID) ||
+                        rootItem.Template.BaseTemplates.Any(t => t.ID.ToString() == XP_Page_Template_Constants.XP_BASE_PAGE_TEMPLATEID))
+                    {
+                        items.Insert(0, rootItem); // include root item itself
+                    }                    
                     var pageMappingItems = PageMappingUtility.LoadPageMappingsFromJson();
                     pageMappingItems = PageMappingUtility.SortPages(pageMappingItems);
 
@@ -139,10 +155,14 @@ namespace CWXPTool.Controllers
                     {
                         Sitecore.Diagnostics.Log.Info($"syncDatasources: {syncDatasources}", this);
                         if(datasourceType.Equals("Blogs"))
-                            await SyncBlogData();
+                            await SyncBlogDataV2();
                         else if (datasourceType.Equals("Providers"))
                         {
                             await SyncProviderData(items);
+                        }
+                        else if (datasourceType.Equals("Metadata"))
+                        {
+                            syncResults = await SyncMetaData(language);
                         }
                         return Json(syncResults);
                     }
@@ -150,29 +170,30 @@ namespace CWXPTool.Controllers
                     model.Items = SitecoreUtility.GetPagesAndRelatedDataFromXP(items, database);
                     if (model.Items != null && model.Items.Any())
                     {
-                        if (pageMappingItems != null && pageMappingItems.Any())
-                        {
-                            if (!string.IsNullOrEmpty(xmcItemPath) && mappingSelections != null && mappingSelections.Any())
-                            {
-                                Sitecore.Diagnostics.Log.Info("Processing mapping selections", this);
-                                foreach (var item in model.Items)
-                                {
-                                    var mappingSelection = mappingSelections.FirstOrDefault(x => item.TemplateID.Equals(ID.Parse(x.TemplateId)));
-                                    if (mappingSelection != null)
-                                    {
-                                        Sitecore.Diagnostics.Log.Info($"Mapping found for {item.Page}/{mappingSelection.XMTemplateId}", this);
-                                        string itemRelativePath = item.Page.Replace(itemPath, "");
-                                        pageMappingItems.Add(new PageMapping()
-                                        {
-                                            CURRENTURL = item.Page,
-                                            NEWURLPATH = $"{xmcItemPath}{itemRelativePath}",
-                                            PAGETEMPLATEID = mappingSelection.XMTemplateId
-                                        });
-                                    }
-                                }
-                            }
-                            syncResults = await SyncPagesInBatches(language, model.Items, pageMappingItems, mappingSelections, createPages, syncComponents);
-                        }
+                        await SyncBlogRTELinksData(model.Items);
+                        //if (pageMappingItems != null && pageMappingItems.Any())
+                        //{
+                        //    if (!string.IsNullOrEmpty(xmcItemPath) && mappingSelections != null && mappingSelections.Any())
+                        //    {
+                        //        Sitecore.Diagnostics.Log.Info("Processing mapping selections", this);
+                        //        foreach (var item in model.Items)
+                        //        {
+                        //            var mappingSelection = mappingSelections.FirstOrDefault(x => item.TemplateID.Equals(ID.Parse(x.TemplateId)));
+                        //            if (mappingSelection != null)
+                        //            {
+                        //                Sitecore.Diagnostics.Log.Info($"Mapping found for {item.Page}/{mappingSelection.XMTemplateId}", this);
+                        //                //string itemRelativePath = item.Page.Replace(itemPath, "");                                        
+                        //                pageMappingItems.Add(new PageMapping()
+                        //                {
+                        //                    CURRENTURL = item.Page,
+                        //                    NEWURLPATH = item.Page.Replace(itemPath, xmcItemPath),
+                        //                    PAGETEMPLATEID = mappingSelection.XMTemplateId
+                        //                });
+                        //            }
+                        //        }
+                        //    }
+                        //    syncResults = await SyncPagesInBatches(language, model.Items, pageMappingItems, mappingSelections, createPages, syncComponents);
+                        //}
                     }
                 }
             }
@@ -197,6 +218,8 @@ namespace CWXPTool.Controllers
             const int batchSize = 5;
             int total = pageDataItems.Count;
             int batches = (int)Math.Ceiling(total / (double)batchSize);
+
+            _allPageMappings = pageMappingItems;
 
             var database = Sitecore.Context.Database;
             var syncResults = new List<SyncContentResponse>();
@@ -225,15 +248,33 @@ namespace CWXPTool.Controllers
 
                     try
                     {
-                        var sourcePageItem = batchItem;
-                        _allPageMappings = pageMappingItems;
+                        var sourcePageItem = batchItem;                        
                         var matchedMapping = _allPageMappings
-                            .FirstOrDefault(mapping =>
+                            .Where(mapping =>
                                 !string.IsNullOrEmpty(mapping.CURRENTURL) &&
-                                mapping.CURRENTURL.Equals(sourcePageItem.Page, StringComparison.OrdinalIgnoreCase));
+                                PageMappingUtility.NormalizePath(mapping.CURRENTURL).Equals(PageMappingUtility.NormalizePath(sourcePageItem.Page), StringComparison.OrdinalIgnoreCase))?.LastOrDefault();
+
+                        if(matchedMapping == null)
+                        {
+                            Sitecore.Diagnostics.Log.Info($"MissingSourcePath: {sourcePageItem.Page}", this);
+                            var path = sourcePageItem.Page.Replace(Constants.SITECORE_XP_PRFIX, Constants.SITECORE_XMC_PRFIX);
+                            Sitecore.Diagnostics.Log.Info($"MissingPath: {path}", this);
+                            var graphQLItem = await SitecoreGraphQLClient.QuerySingleItemAsync(_environment, _accessToken, path);
+                            if(graphQLItem != null)
+                            {
+                                Sitecore.Diagnostics.Log.Info($"graphQLItem: {graphQLItem.ItemId}|{graphQLItem.TemplateId}", this);
+                                matchedMapping = new PageMapping()
+                                {
+                                    NEWURLPATH = path,
+                                    CURRENTURL = sourcePageItem.Page,
+                                    PAGETEMPLATEID = SitecoreUtility.FormatGuid(graphQLItem.TemplateId)
+                                };
+                                _allPageMappings.Add(matchedMapping);
+                            }
+                        }
 
                         if (matchedMapping != null)
-                        {
+                        {                            
                             response.SyncedItemPath = matchedMapping.NEWURLPATH;
 
                             string xmcTemplateId = matchedMapping.PAGETEMPLATEID;
@@ -302,15 +343,24 @@ namespace CWXPTool.Controllers
                                             //Page Specific Data Migration
                                             if (XMC_Page_Template_Constants.Side_Nav_Templates.Contains(xmcTemplateId))
                                             {
-                                                await SideNavMigrationService.ProcessAsync(rteRenderings, sourcePageItem, dataItemId, matchedMapping.NEWURLPATH, _environment, _accessToken);
+                                                await SideNavMigrationService.ProcessAsync(rteRenderings, sourcePageItem, dataItemId, matchedMapping.NEWURLPATH, _environment, _accessToken, _allPageMappings);
                                                 sourcePageItem = SitecoreUtility.RemoveRenderingDatasources(sourcePageItem, sourcePageItem.Renderings, XP_RenderingName_Constants.RichText);
+                                                sourcePageItem = SitecoreUtility.RemoveRenderingDatasources(sourcePageItem, sourcePageItem.Renderings, XP_RenderingName_Constants.Accordion);
                                             }
 
                                             if (xmcTemplateId.Equals(XMC_Page_Template_Constants.Teaching_Sheets))
                                             {
-                                                await TeachingSheetMigrationService.ProcessAsync(language, rteRenderings, sourcePageItem, dataItemId, matchedMapping.NEWURLPATH, _environment, _accessToken, generalHeaderItemId);
+                                                await TeachingSheetMigrationService.PatchAsync(language, rteRenderings, sourcePageItem, dataItemId, matchedMapping.NEWURLPATH, _environment, _accessToken, generalHeaderItemId);
                                                 sourcePageItem = SitecoreUtility.RemoveRenderingDatasources(sourcePageItem, sourcePageItem.Renderings, XP_RenderingName_Constants.RichText);
                                                 sourcePageItem = SitecoreUtility.RemoveRenderingDatasources(sourcePageItem, sourcePageItem.Renderings, XP_RenderingName_Constants.Multi_Button_Callout);
+                                            }
+
+                                            if (xmcTemplateId.Equals(XMC_Page_Template_Constants.General2_ELearningCenter))
+                                            {
+                                                await ELearningCenterMigrationService.ProcessAsync(language, rteRenderings, sourcePageItem, _allPageMappings, dataItemId, matchedMapping.NEWURLPATH, _environment, _accessToken);
+                                                sourcePageItem = SitecoreUtility.RemoveRenderingDatasources(sourcePageItem, sourcePageItem.Renderings, XP_RenderingName_Constants.RichText);
+                                                sourcePageItem = SitecoreUtility.RemoveRenderingDatasources(sourcePageItem, sourcePageItem.Renderings, XP_RenderingName_Constants.SidebarContentCallout);                                                
+                                                sourcePageItem = SitecoreUtility.RemoveRenderingDatasources(sourcePageItem, sourcePageItem.Renderings, XP_RenderingName_Constants.Script);
                                             }
 
                                             if (XMC_Page_Template_Constants.Location_Pages.Contains(xmcTemplateId))
@@ -350,11 +400,19 @@ namespace CWXPTool.Controllers
                                                 }
                                             }
 
+                                            if (!XMC_Page_Template_Constants.Side_Nav_Templates.Contains(xmcTemplateId))
+                                            {
+                                                await CreateAccordionDatasources(language, matchedMapping.NEWURLPATH, dataItemId, sourcePageItem);
+                                                sourcePageItem = SitecoreUtility.RemoveRenderingDatasources(sourcePageItem, sourcePageItem.Renderings, XP_RenderingName_Constants.Accordion);
+                                            }
+
                                             await CreatePageHeadlineDatasources(sourcePageItem, headlineRenderings,
                                                 dataItemId, matchedMapping);
 
                                             await CreateRTEDatasources(sourcePageItem, matchedMapping,
                                                 dataItemId);
+
+                                            await CreateHeroBannerRTEDatasources(sourcePageItem, matchedMapping, dataItemId);
                                         }
                                     }
 
@@ -500,7 +558,16 @@ namespace CWXPTool.Controllers
 
         private async Task SyncBlogData()
         {
-            var xpBlogResources = GetBlogTagResourcesFromXP();
+            var mappings = new List<MetaMapping>();
+
+            for (int i = 1; i <= 8; i++)
+            {
+                var metaMappings = JsonConvert.DeserializeObject<List<MetaMapping>>(System.IO.File.ReadAllText($"F:\\Migration\\CWMetadataMapping_part{i}.json"));
+                mappings.AddRange(metaMappings);
+            }
+
+            var xpBlogResources = await GetBlogTagResourcesFromXP(mappings);
+
             foreach (var xpBlogResource in xpBlogResources)
             {
                 Sitecore.Diagnostics.Log.Info($"xpBlogResource.ItemName: {xpBlogResource.ItemName}", this);
@@ -570,7 +637,114 @@ namespace CWXPTool.Controllers
                     }
                 }
             }
-        }        
+        }
+
+        private async Task SyncBlogDataV2()
+        {
+            var mappings = new List<MetaMapping>();
+
+            for (int i = 1; i <= 8; i++)
+            {
+                var metaMappings = JsonConvert.DeserializeObject<List<MetaMapping>>(System.IO.File.ReadAllText($"F:\\Migration\\CWMetadataMapping_part{i}.json"));
+                mappings.AddRange(metaMappings);
+            }
+
+            var xpBlogResources = await GetBlogTagResourcesFromXP(mappings);            
+
+            foreach (var xpBlogResource in xpBlogResources)
+            {
+                Sitecore.Diagnostics.Log.Info($"xpBlogResource.ItemName: {xpBlogResource.ItemName}", this);
+                var tagItem = await SitecoreGraphQLClient.QuerySingleItemAsync(_environment, _accessToken, $"{XMC_Datasource_Constants.StoryTags}/{xpBlogResource.ItemName}");
+                if (tagItem != null)
+                {
+                    Sitecore.Diagnostics.Log.Info($"tagItem.Name: {tagItem.Name}", this);
+                    var resourcesItem = await SitecoreGraphQLClient.QuerySingleItemAsync(_environment, _accessToken, $"{XMC_Datasource_Constants.StoryTags}/{xpBlogResource.ItemName}/Resources");
+                    if (resourcesItem != null)
+                    {
+                        var resourcesItemId = resourcesItem.ItemId;
+                        if (!string.IsNullOrEmpty(resourcesItemId))
+                        {
+                            Sitecore.Diagnostics.Log.Info($"resourcesItemId: {resourcesItemId}", this);
+                            var linksItem = await SitecoreGraphQLClient.QuerySingleItemAsync(_environment, _accessToken, $"{XMC_Datasource_Constants.StoryTags}/{xpBlogResource.ItemName}/Resources/Links");
+                            if (linksItem != null)
+                            {                              
+                                var updateInput = new SitecoreUpdateItemInput()
+                                {
+                                    ItemId = linksItem.ItemId,
+                                    Fields = new List<SitecoreFieldInput>()
+                                                {
+                                                    new SitecoreFieldInput()
+                                                    {
+                                                        Name = "textArea",
+                                                        Value = xpBlogResource.Description
+                                                    }
+                                                },
+                                    Language = "en"
+                                };
+                                await SitecoreGraphQLClient.UpdateBulkItemsBatchedAsync(new List<SitecoreUpdateItemInput>() { updateInput }, _environment, _accessToken, 10);                                
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        private async Task SyncBlogRTELinksData(List<PageDataModel> items)
+        {
+            if(items != null && items.Any())
+            {
+                var mappings = new List<MetaMapping>();
+
+                for (int i = 1; i <= 8; i++)
+                {
+                    var metaMappings = JsonConvert.DeserializeObject<List<MetaMapping>>(System.IO.File.ReadAllText($"F:\\Migration\\CWMetadataMapping_part{i}.json"));                                       
+                    mappings.AddRange(metaMappings);
+                }                                          
+
+                foreach (var item in items)
+                {                    
+                    var xpBlogItemPath = item.Page;
+
+                    Sitecore.Diagnostics.Log.Warn($"SyncBlogRTELinksData-xpBlogItemPath:{item.Page}", this);
+
+                    var xmcBlogItemPath = xpBlogItemPath.Replace("/sitecore/content/CHW/Content/Page Content/News Hub/", "/sitecore/content/CW/childrens/Home/At-Every-Turn/");
+
+                    Sitecore.Diagnostics.Log.Warn($"SyncBlogRTELinksData-xmcBlogItemPath:{xmcBlogItemPath}", this);
+
+                    var xmcItem = await this.SitecoreGraphQLClient.QueryBlogSingleItemAsync(_environment, _accessToken, xmcBlogItemPath); ;
+
+                    if (xmcItem == null)
+                    {
+                        Sitecore.Diagnostics.Log.Warn($"SyncBlogRTELinksData-xmcBlogItemPath:{xmcBlogItemPath} No match", this);
+                        continue;
+                    }
+
+                    var xpHtml = item.Fields.FirstOrDefault(f => f.Name.Equals("Content")).Value;                    
+
+                    var xmcHtml = xmcItem.Content;                    
+
+                    var finalHtml = await RichTextSplitter.RemapInternalSitecoreLinksByTextAsync(xpHtml, xmcHtml, this.SitecoreGraphQLClient,
+                        _environment, _accessToken, mappings);                    
+
+                    var updateInput = new SitecoreUpdateItemInput()
+                    {
+                        ItemId = xmcItem.ItemId,
+                        Fields = new List<SitecoreFieldInput>()
+                                                {
+                                                    new SitecoreFieldInput()
+                                                    {
+                                                        Name = "content",
+                                                        Value = finalHtml
+                                                    }
+                                                },
+                        Language = "en"
+                    };
+                    await SitecoreGraphQLClient.UpdateBulkItemsBatchedAsync(new List<SitecoreUpdateItemInput>() { updateInput }, _environment, _accessToken, 10);
+                    Sitecore.Diagnostics.Log.Warn($"SyncBlogRTELinksData-Updated:{xmcBlogItemPath}", this);
+                }
+            }
+        }
+
 
         private async Task CreateOfficeHoursDatasources(Item[] items, string newUrlPath, string dataItemId, string folderName, string templateId)
         {
@@ -668,11 +842,30 @@ namespace CWXPTool.Controllers
                             var itemName = rteFields.Count() > 1 ? $"{datasource.Name}-{itemCounter}" : datasource.Name;
                             var path = $"{pageMapping.NEWURLPATH}/Data/{itemName}";
                             var existingItem = await this.SitecoreGraphQLClient.QuerySingleItemAsync(_environment, _accessToken, path);
+                            var finalHtml = await RichTextSplitter.RemapInternalSitecoreLinks(rteField.Value,
+                                    this.SitecoreGraphQLClient, _environment, _accessToken, _allPageMappings);
                             if (existingItem == null)
-                            {
+                            {                                
                                 var inputItem = SitecoreUtility.GetSitecoreCreateItemInput(itemName,
-                                        XMC_Template_Constants.RTE, localDataItemId, "text", rteField.Value);
+                                        XMC_Template_Constants.RTE, localDataItemId, "text", finalHtml);
                                 items.Add(inputItem);
+                            }
+                            else
+                            {                                
+                                var updateItemInput = new SitecoreUpdateItemInput()
+                                {
+                                    ItemId = existingItem.ItemId,
+                                    Fields = new List<SitecoreFieldInput>()
+                                    {
+                                        new SitecoreFieldInput()
+                                        {
+                                            Name = "text",
+                                            Value = finalHtml
+                                        }
+                                    },
+                                    Language = "en"
+                                };
+                                await SitecoreGraphQLClient.UpdateBulkItemsBatchedAsync(new List<SitecoreUpdateItemInput>() { updateItemInput }, _environment, _accessToken, 10);
                             }
                         }
                     }
@@ -680,6 +873,44 @@ namespace CWXPTool.Controllers
                 if (items.Any())
                     await this.SitecoreGraphQLClient.CreateBulkItemsBatchedAsync(items, _environment, _accessToken, 10);
             }
+        }
+
+        private async Task CreateHeroBannerRTEDatasources(
+            PageDataModel sourcePageItem,
+            PageMapping pageMapping,
+            string localDataItemId)
+        {
+            Sitecore.Diagnostics.Log.Info("CreateHeroBannerRTEDatasources", this);
+            var path = $"{pageMapping.NEWURLPATH}/Data/Hero Banner RTE";
+            Sitecore.Diagnostics.Log.Info($"{path}", this);
+            var heroSmallBannerRendering = sourcePageItem.Renderings.FirstOrDefault(r => r.RenderingName.Equals(XP_RenderingName_Constants.HeroSmallBanner));
+
+            if(heroSmallBannerRendering != null)
+            {
+                Sitecore.Diagnostics.Log.Info($"heroSmallBannerRendering exists", this);
+                var datasource = SitecoreUtility.GetDatasource(sourcePageItem, heroSmallBannerRendering.DatasourceID);
+                if(datasource != null)
+                {
+                    Sitecore.Diagnostics.Log.Info($"heroSmallBannerRendering datasource exists", this);
+                    var bannerImage = datasource.Fields.FirstOrDefault(f => f.Name.Equals("BannerImage"));
+                    if(bannerImage != null && !string.IsNullOrEmpty(bannerImage.Value))
+                    {
+                        Sitecore.Diagnostics.Log.Info($"{bannerImage.Value}", this);
+                        var finalHtml = RichTextSplitter.ConvertMediaToRteHtml(bannerImage.Value);
+                        if (!string.IsNullOrEmpty(finalHtml))
+                        {
+                            Sitecore.Diagnostics.Log.Info($"{finalHtml}", this);
+                            var existingItem = await this.SitecoreGraphQLClient.QuerySingleItemAsync(_environment, _accessToken, path);
+                            if (existingItem == null)
+                            {
+                                var inputItem = SitecoreUtility.GetSitecoreCreateItemInput("Hero Banner RTE",
+                                        XMC_Template_Constants.RTE, localDataItemId, "text", finalHtml);                                
+                                await this.SitecoreGraphQLClient.CreateBulkItemsBatchedAsync(new List<SitecoreCreateItemInput>() { inputItem }, _environment, _accessToken, 10);
+                            }
+                        }
+                    }
+                }
+            }            
         }
 
         private async Task CreateTextMediaDatasources(
@@ -701,8 +932,7 @@ namespace CWXPTool.Controllers
 
                 var richTextAbove = datasource.Fields.FirstOrDefault(x => x.Name == "RichTextAbove" && !string.IsNullOrEmpty(x.Value))?.Value ?? string.Empty;
                 var richTextBelow = datasource.Fields.FirstOrDefault(x => x.Name == "RichTextBelow" && !string.IsNullOrEmpty(x.Value))?.Value ?? string.Empty;
-
-
+                
                 var richText = $"{richTextAbove}";
 
                 if (!string.IsNullOrEmpty(richText) && !string.IsNullOrEmpty(richTextBelow))
@@ -711,14 +941,14 @@ namespace CWXPTool.Controllers
                     richText += richTextBelow;
 
                 if (string.IsNullOrEmpty(richText))
-                    richText = title.Value?.ToString() ?? string.Empty;
+                    richText = title?.Value?.ToString() ?? string.Empty;
 
                 if (!string.IsNullOrEmpty(richText))
                 {
                     var field = new SitecoreFieldInput()
                     {
                         Name = "description",
-                        Value = richText,
+                        Value = await RichTextSplitter.RemapInternalSitecoreLinks(richText, this.SitecoreGraphQLClient, _environment, _accessToken, _allPageMappings),
                     };
                     fields.Add(field);
                 }
@@ -733,6 +963,16 @@ namespace CWXPTool.Controllers
                 var existingItem = await this.SitecoreGraphQLClient.QuerySingleItemAsync(_environment, _accessToken, path);
                 if (existingItem == null)
                     await CreateItem(localDataItemId, datasource.Name, XMC_Template_Constants.Text_Media, fields);
+                else
+                {
+                    var updateItemInput = new SitecoreUpdateItemInput()
+                    {
+                        ItemId = existingItem.ItemId,
+                        Fields = fields,
+                        Language = "en"
+                    };
+                    await SitecoreGraphQLClient.UpdateBulkItemsBatchedAsync(new List<SitecoreUpdateItemInput>() { updateItemInput }, _environment, _accessToken, 10);
+                }                
             }
         }
 
@@ -803,7 +1043,8 @@ namespace CWXPTool.Controllers
                                     {
                                         if (matchedMapping.PAGETEMPLATEID.Equals(XMC_Page_Template_Constants.Condition_Treatment))
                                             continue;
-                                        if (matchedMapping.PAGETEMPLATEID.Equals(XMC_Page_Template_Constants.General2))
+                                        if (matchedMapping.PAGETEMPLATEID.Equals(XMC_Page_Template_Constants.General2) ||
+                                            matchedMapping.PAGETEMPLATEID.Equals(XMC_Page_Template_Constants.General2_ELearningCenter))
                                         {
                                             await UpdateGeneralHeaderTitle(matchedMapping, headlineField.Value);
                                             continue;
@@ -975,7 +1216,88 @@ namespace CWXPTool.Controllers
             }
 
             return false;
-        }      
+        }
+
+        private async Task<bool> SyncPageMetaFields(string lang, PageDataModel sourcePageItem, MetaMapping metaMapping, SitecoreItem targetItem)
+        {
+            Sitecore.Diagnostics.Log.Info($"Meta fields syncing started for {sourcePageItem.Page}|{metaMapping.NewUrlPath}", this);
+
+            var fields = new List<SitecoreFieldInput>() { };
+
+            var pageMetaTitle = await GetSitecoreFieldInput(sourcePageItem, "PageMetaTitle", "pageMetaTitle");
+            if (pageMetaTitle != null)
+            {
+                if(!string.IsNullOrEmpty(metaMapping.RecommendedMetaTitle))
+                    pageMetaTitle.Value = metaMapping.RecommendedMetaTitle;
+                fields.Add(pageMetaTitle);
+            }
+
+            var metaDescription = await GetSitecoreFieldInput(sourcePageItem, "MetaDescription", "metaDescription");
+            if (metaDescription != null)
+            {
+                if (!string.IsNullOrEmpty(metaMapping.RecommendedMetaDescription))
+                    metaDescription.Value = metaMapping.RecommendedMetaDescription;
+                fields.Add(metaDescription);
+            }                
+
+            var metaKeywords = await GetSitecoreFieldInput(sourcePageItem, "MetaKeywords", "metaKeywords");
+            if (metaKeywords != null)
+                fields.Add(metaKeywords);            
+
+            var facebookTitle = await GetSitecoreFieldInput(sourcePageItem, "FacebookTitle", "facebookTitle");
+            if (facebookTitle != null)
+                fields.Add(facebookTitle);
+
+            var facebookDescription = await GetSitecoreFieldInput(sourcePageItem, "FacebookDescription", "facebookDescription");
+            if (facebookDescription != null)
+                fields.Add(facebookDescription);
+
+            var facebookImage = await GetSitecoreFieldInput(sourcePageItem, "FacebookImage", "facebookImage");
+            if (facebookImage != null)
+                fields.Add(facebookImage);
+
+            var twitterTitle = await GetSitecoreFieldInput(sourcePageItem, "TwitterTitle", "twitterTitle");
+            if (twitterTitle != null)
+                fields.Add(twitterTitle);
+
+            var twitterDescription = await GetSitecoreFieldInput(sourcePageItem, "TwitterDescription", "twitterDescription");
+            if (twitterDescription != null)
+                fields.Add(twitterDescription);
+
+            var twitterImage = await GetSitecoreFieldInput(sourcePageItem, "TwitterImage", "twitterImage");
+            if (twitterImage != null)
+                fields.Add(twitterImage);
+
+            var metaRobotsNOINDEX = await GetSitecoreFieldInput(sourcePageItem, "MetaRobotsNOINDEX", "metaRobotsNOINDEX");
+            if (metaRobotsNOINDEX != null)
+                fields.Add(metaRobotsNOINDEX);
+
+            var metaRobotsNOFOLLOW = await GetSitecoreFieldInput(sourcePageItem, "MetaRobotsNOFOLLOW", "metaRobotsNOFOLLOW");
+            if (metaRobotsNOFOLLOW != null)
+                fields.Add(metaRobotsNOFOLLOW);
+
+            if (sourcePageItem.TemplateID.Equals(ID.Parse("{51E1C4BE-50D2-4802-AA8F-BE77B4C66FC8}")))
+            {
+                var title = await GetSitecoreFieldInput(sourcePageItem, "BrowserTitle", "Title");
+                if (title != null)
+                    fields.Add(title);
+            }            
+
+            if (fields.Any())
+            {
+                var updateItemInput = new SitecoreUpdateItemInput()
+                {
+                    ItemId = targetItem.ItemId,
+                    Fields = fields,
+                    Language = lang
+                };
+                var result = await SitecoreGraphQLClient.UpdateBulkItemsBatchedAsync(new List<SitecoreUpdateItemInput>() { updateItemInput }, _environment, _accessToken, 10);
+                Sitecore.Diagnostics.Log.Info($"Meta fields syncing completed for {sourcePageItem.Page}|{metaMapping.NewUrlPath}", this);
+                return result;
+            }
+
+            return false;
+        }
 
         private async Task EnsureSitecorePathExistsAsync(string targetPath)
         {
@@ -1022,7 +1344,7 @@ namespace CWXPTool.Controllers
             string parentItemId = existingParentId;
 
             foreach (var segmentPath in segmentsToCreate)
-            {
+            {                
                 var segmentMapping = _allPageMappings.FirstOrDefault(x =>
                     !string.IsNullOrEmpty(x.PAGETEMPLATEID) &&
                     x.NEWURLPATH.Equals(segmentPath, StringComparison.OrdinalIgnoreCase));
@@ -1232,7 +1554,7 @@ namespace CWXPTool.Controllers
             return degreeTitles;
         }
 
-        private List<XPBlogResourceItem> GetBlogTagResourcesFromXP()
+        private async Task<List<XPBlogResourceItem>> GetBlogTagResourcesFromXP(List<MetaMapping> mappings)
         {
             Sitecore.Diagnostics.Log.Info("GetBlogTagResourcesFromXP", this);
             var xpStoryTags = new List<XPBlogResourceItem>();
@@ -1261,9 +1583,45 @@ namespace CWXPTool.Controllers
 
                 foreach (var resource in resources)
                 {
+                    string anchor = "";
                     Sitecore.Diagnostics.Log.Info($"resource: {resource?.ID?.ToString()}", this);
                     var title = resource.Fields["Title"].Value;
-                    resourceLinks.Add($@"<li><a href=""/"">{title}</a></li>");
+                    var relatedResourceField = resource.Fields["RelatedResourceLink"];
+                    Item linkedItem = null;
+                    if (relatedResourceField != null)
+                    {
+                        LinkField linkField = relatedResourceField;
+
+                        if (linkField != null)
+                        {
+                            if (linkField.IsInternal && linkField.TargetItem != null)
+                            {
+                                // Internal link → get item
+                                linkedItem = linkField.TargetItem;
+                                
+                                var mapping = mappings.FirstOrDefault(x => x.CurrentUrl.Equals(linkedItem.Paths.FullPath, StringComparison.OrdinalIgnoreCase));
+                                if (mapping != null)
+                                {
+                                    var xmcItemId = string.Empty;
+                                    var xmcItem = await this.SitecoreGraphQLClient.QuerySingleItemAsync(_environment, _accessToken, mapping.NewUrlPath);
+                                    if (xmcItem != null)
+                                    {
+                                        xmcItemId = xmcItem.ItemId;
+                                        anchor = $"<a href=\"~/link.aspx?_id={xmcItemId.ToUpperInvariant()}&amp;_z=z\">{title}</a>";
+                                    }                                    
+                                }
+                                else
+                                {
+                                    anchor = $"<a href=\"~/link.aspx?_id=D42D62E5900D45FC8492CAD769DF641B&amp;_z=z\">{title}</a>";
+                                }
+                            }
+                            else
+                            {
+                                anchor = $"<a href=\"{linkField.GetFriendlyUrl()}\">{title}</a>";                                
+                            }
+                        }
+                    }
+                    resourceLinks.Add($@"<li>{anchor}</li>");
                 }
 
                 if (resourceLinks == null || !resourceLinks.Any())
@@ -1314,6 +1672,176 @@ namespace CWXPTool.Controllers
             }
             return null;
         }
+
+        public async Task CreateAccordionDatasources(string language, string newUrlPath, string dataItemId, PageDataModel sourcePageItem)
+        {            
+            var xpRenderings = sourcePageItem.Renderings.Where(x => x.RenderingName.Contains(XP_RenderingName_Constants.Accordion))?.ToList();
+            
+            if (xpRenderings?.Any() == true)
+            {
+                int counter = 0;
+                foreach (var xpRendering in xpRenderings)
+                {
+                    var xpDatasourceItem = Sitecore.Context.Database.GetItem(xpRendering.DatasourceID);
+
+                    if (xpDatasourceItem != null && xpDatasourceItem.HasChildren)
+                    {
+                        var xmcAccordionRootItemId = string.Empty;
+
+                        var accordionName = counter == 0 ? "Accordion" : xpDatasourceItem.Name;
+
+                        var xpAccordionItems = xpDatasourceItem.GetChildren().ToList();
+
+                        var xmcAccordionRootItem = await this.SitecoreGraphQLClient.QuerySingleItemAsync(_environment, _accessToken, $"{newUrlPath}/Data/{accordionName}");
+
+                        if (xmcAccordionRootItem == null)
+                        {
+                            var inputItem = new SitecoreCreateItemInput
+                            {
+                                Name = accordionName,
+                                TemplateId = XMC_Template_Constants.Accordion,
+                                Parent = dataItemId,
+                                Language = "en"
+                            };
+
+                            var createdItem = await this.SitecoreGraphQLClient.CreateBulkItemsBatchedAsync(
+                                new List<SitecoreCreateItemInput> { inputItem }, _environment, _accessToken);
+
+                            xmcAccordionRootItemId = createdItem?.FirstOrDefault()?.ItemId;
+                        }
+                        else
+                            xmcAccordionRootItemId = xmcAccordionRootItem.ItemId;
+
+                        if (!string.IsNullOrEmpty(xmcAccordionRootItemId))
+                        {
+                            foreach (var xpAccordionItem in xpAccordionItems)
+                            {
+                                var fields = new List<SitecoreFieldInput>();
+                                var heading = SitecoreUtility.GetSitecoreFieldInput(xpAccordionItem, "Title", "heading");
+                                if (heading != null)
+                                    fields.Add(heading);
+                                var content = SitecoreUtility.GetSitecoreFieldInput(xpAccordionItem, "Content", "content");
+                                if (content != null)
+                                {
+                                    var linksRemappedHtml = await RichTextSplitter.RemapInternalSitecoreLinks(content.Value?.ToString(), this.SitecoreGraphQLClient, _environment, _accessToken, _allPageMappings);
+
+                                    if (!string.IsNullOrEmpty(linksRemappedHtml))
+                                    {
+                                        content.Value = linksRemappedHtml;
+                                        fields.Add(content);
+                                    }
+                                }
+                                var path = $"{newUrlPath}/Data/{accordionName}/{xpAccordionItem.Name}";
+                                var xmcAccordionItem = await this.SitecoreGraphQLClient.QuerySingleItemAsync(_environment, _accessToken, $"{path}");
+                                if (xmcAccordionItem == null)
+                                {
+                                    var inputItem = new SitecoreCreateItemInput
+                                    {
+                                        Name = xpAccordionItem.Name,
+                                        TemplateId = XMC_Template_Constants.AccordionItem,
+                                        Parent = xmcAccordionRootItemId,
+                                        Language = "en",
+                                        Fields = fields
+                                    };
+
+                                    await this.SitecoreGraphQLClient.CreateBulkItemsBatchedAsync(
+                                        new List<SitecoreCreateItemInput> { inputItem }, _environment, _accessToken);
+                                }
+                                else
+                                {
+                                    var updateItem = new SitecoreUpdateItemInput
+                                    {
+                                        ItemId = xmcAccordionItem.ItemId,
+                                        Language = "en",
+                                        Fields = fields
+                                    };
+                                    await this.SitecoreGraphQLClient.UpdateBulkItemsBatchedAsync(
+                                        new List<SitecoreUpdateItemInput> { updateItem }, _environment, _accessToken);
+                                }
+                            }
+                        }
+
+                        counter++;
+                    }
+                }
+            }
+        }
+
+        public async Task<List<SyncContentResponse>> SyncMetaData(string lang)
+        {
+            List<SyncContentResponse> syncResults = new List<SyncContentResponse>();
+            var metaMappings = JsonConvert.DeserializeObject<List<MetaMapping>>(System.IO.File.ReadAllText("F:\\Migration\\CWMetadataMapping.json"));
+            if (metaMappings == null)
+            {
+                syncResults.Add(new SyncContentResponse()
+                {
+                    Success = false,
+                    Message = "metaMappings not found"
+                });
+                return syncResults;
+            }
+            if(metaMappings != null && metaMappings.Any())
+            {
+                var uniqueMetaMappings = metaMappings
+                    .GroupBy(x => x.NewUrlPath)
+                    .Select(g => g.First())
+                    .ToList();
+
+                foreach (var metaMapping in uniqueMetaMappings) {
+                    
+                    var response = new SyncContentResponse();
+
+                    response.SyncedItemPath = $"XP-Path:{metaMapping.CurrentUrl}|XMC-Path:{metaMapping.NewUrlPath}";
+
+                    var xpPageItem = Sitecore.Context.Database.GetItem(metaMapping.CurrentUrl);       
+                    
+                    if(xpPageItem == null)
+                    {
+                        response.Message = $"xpPageItem not found for {metaMapping.CurrentUrl}";
+                        response.Success = false;
+                        syncResults.Add(response);
+                        continue;
+                    }
+
+                    if(xpPageItem != null)
+                    {
+                        var targetItem = await SitecoreGraphQLClient.QuerySingleItemAsync(_environment, _accessToken, metaMapping.NewUrlPath);
+                        if (targetItem == null)
+                        {
+                            response.Message = $"targetItem not found: {metaMapping.NewUrlPath}";
+                            response.Success = false;
+                            syncResults.Add(response);
+                            continue;
+                        }
+                        if (targetItem != null)
+                        {
+                            var pageModel = new PageDataModel { Page = xpPageItem.Paths.FullPath };
+                            pageModel.ItemID = xpPageItem.ID;
+                            pageModel.TemplateID = xpPageItem.TemplateID;
+                            foreach (Field field in xpPageItem.Fields)
+                            {
+                                if (!field.Name.StartsWith("__") && !pageModel.Fields.Any(x => x.Name.Equals(field.Name)))
+                                {
+                                    var xpField = new XPField(field);
+                                    xpField.Name = field.Name;
+                                    xpField.Value = field.Value;
+                                    xpField.Type = field.Type;
+                                    Sitecore.Diagnostics.Log.Info($"Field:{xpField.Name}|Value:{xpField.Value}", typeof(SitecoreUtility));
+                                    pageModel.Fields.Add(xpField);
+                                }
+                            }
+
+                            await SyncPageMetaFields(lang, pageModel, metaMapping, targetItem);
+
+                            response.Message = "Meta fields synced";                            
+                            response.Success = true;
+                            syncResults.Add(response);
+                        }
+                    }
+                }
+            }
+            return syncResults;
+        }        
 
         private List<XPLookUpItem> GetDegreeTitlesLookUpsFromXP()
         {

@@ -27,7 +27,7 @@ namespace CWXPMigration
             });
 
             return pages;
-        }
+        }       
 
         public static List<PageMapping> LoadPageMappingsFromJson()
         {
@@ -53,6 +53,7 @@ namespace CWXPMigration
 
         public static string GetSitecorePathFromUrl(string url, string pageTemplateId, string prefix = "")
         {
+            
             if (string.IsNullOrWhiteSpace(url))
                 return string.Empty;
 
@@ -71,8 +72,22 @@ namespace CWXPMigration
                 }
             }
 
+            
+
             string normalizedPath = pageTemplateId.Equals(XMC_Page_Template_Constants.Teaching_Sheets) ? path.TrimStart('/') : path.TrimStart('/').Replace("-", " ");
+
             return string.IsNullOrEmpty(prefix) ? normalizedPath : prefix + normalizedPath;
+        }
+
+        public static string NormalizePath(string path)
+        {
+            if (string.IsNullOrWhiteSpace(path))
+                return string.Empty;
+
+            return path
+                .Trim()                
+                .Replace(" ", "-") // unify spaces as hyphens
+                .ToLowerInvariant();
         }
     }
 }

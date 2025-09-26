@@ -87,6 +87,7 @@ namespace CWXPMigration
             path: path
             itemId: itemId
             itemName: name
+            template {{ templateId }}
             {fieldQueries}
         }}
     }}";

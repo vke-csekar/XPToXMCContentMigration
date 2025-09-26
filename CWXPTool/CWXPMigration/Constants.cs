@@ -5,6 +5,7 @@
         //Component Datasource Templates
         public const string RTE = "{0EFFE34A-636F-4288-BA3B-0AF056AAD42B}";
         public const string In_Page_Banner = "{8BF22068-7CA9-4768-AB54-65872A7A79DD}";
+        public const string In_Page_Banner_Folder = "{CBAE6041-6EDA-4B5D-89EE-D7D0AADB29D0}";
         public const string Data = "{1C82E550-EBCD-4E5D-8ABD-D50D0809541E}";
         public const string Text_Media = "{0EE2E1D9-DDD5-471A-9BE3-0F39AD0FC4E2}";
         public const string General_Header = "{58DE8B66-C714-4BB3-80C1-A0FD015A056D}";
@@ -18,6 +19,8 @@
         public const string OfficeHoursFolder = "{FED0CCA2-CE0A-4426-84D0-747BC00629D2}";
         public const string TextLinkList = "{4902A5EC-B0ED-46FC-9919-29D036E505B9}";
         public const string LinkGroup = "{3DEC66E0-B69B-4808-80BB-6CCEEF96939E}";
+        public const string Accordion = "{6E7C7004-0D73-40E9-82EA-2F14D09DB64F}";
+        public const string AccordionItem = "{22298E17-88E2-46AD-85A8-AA8B77434BF2}";
     }
 
     public static class XMC_Page_Template_Constants
@@ -26,6 +29,8 @@
         public const string Condition_Treatment = "{4D49E913-37B3-4946-9372-7BB0DCA63BC9}";
         public const string Teaching_Sheets = "{39EBED3F-5965-4A68-9A4C-45E7D29043C8}";
         public const string General2 = "{2400C94A-5BB1-4F69-85CC-3AD185DC4BCA}";
+        public const string General1 = "{C8749C06-CA6C-4630-83E0-EA1A9A973907}";
+        public const string General2_ELearningCenter = "{3D5701A0-949E-4643-8709-E4D20C8881B1}";
 
         public const string PrimaryCare = "{6274DC7B-91E7-4243-B5DA-96604F2EBBEA}";
         public const string UrgentCare = "{7A4E0C65-C397-4E65-A941-7CF879C0B727}";
@@ -33,10 +38,18 @@
         public const string Hospital = "{CE453EDE-ED09-4928-80B0-143556AA52E8}";
         public const string LocationPage = "{1B371DE2-704C-4D43-A94B-FC04B95DC6B8}";
 
+        public const string SpecialtyPage = "{940E3495-FBB0-41F6-91CC-2DDBD6D64D7F}";
+
         // Grouped arrays from constants
         public static readonly string[] Side_Nav_Templates = new[]
         {
-            Condition_Treatment
+            Condition_Treatment,
+            SpecialtyPage,
+            PrimaryCare,
+            UrgentCare,
+            SpecialtyCare,
+            Hospital,
+            LocationPage
         };
 
         public static readonly string[] Location_Pages = new[]
@@ -60,6 +73,7 @@
     public class XP_Page_Template_Constants
     {
         public const string XP_BASE_PAGE_TEMPLATEID = "{8F3DE639-B021-42CE-AE90-0E07BECB6B03}";
+        public const string XP_CHWF_BASE_PAGE_TEMPLATEID = "{E419D5AA-0E91-4D3F-82FE-D509332A35DE}";
         public const string LOCATION = "{F7B88F3A-10EB-4226-BF3B-041F95ABA0E9}";
         public const string Physician = "{51E1C4BE-50D2-4802-AA8F-BE77B4C66FC8}";
     }
@@ -74,6 +88,9 @@
         public const string Video_Main_Body = "Video Main Body";
         public const string Multi_Button_Callout = "Multi Button Callout";
         public const string Script = "Script";
+        public const string Accordion = "Accordion";
+        public const string SidebarContentCallout = "SidebarContentCallout";
+        public const string HeroSmallBanner = "HeroSmallBanner";
 
         public static readonly string[] XP_RENDERING_NAMES =
         {
@@ -84,7 +101,10 @@
             Publication_Content,
             Video_Main_Body,
             Multi_Button_Callout,
-            Script
+            Script,
+            Accordion,
+            SidebarContentCallout,
+            HeroSmallBanner
         };
     }
 
@@ -114,6 +134,9 @@
         public const string UserScriptItem = "{19D4AA2D-9190-414C-A88C-CB513DA967AA}";
 
         public const string SITECORE_XP_PRFIX = "/sitecore/content/CHW/Home/";
+
+        public const string SITECORE_XMC_PRFIX = "/sitecore/content/CW/childrens/Home/";
+        
         public const string XP_MIGRATION_LOG_JSON_PATH = "F:\\Migration\\CWXPMigrationContent.json";
 
         public const string BlogRootPath = "/sitecore/content/CW/childrens/Home/At-Every-Turn/Stories";

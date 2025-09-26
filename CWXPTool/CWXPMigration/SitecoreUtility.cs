@@ -6,6 +6,7 @@ using Sitecore.Globalization;
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Xml.Linq;
 
 namespace CWXPMigration
 {
@@ -259,6 +260,27 @@ namespace CWXPMigration
             }
 
             return langItem;            
+        }
+
+        public static string UpdateLinkText(string linkRawValue, string linkText)
+        {
+            if (string.IsNullOrWhiteSpace(linkRawValue))
+                return linkRawValue;
+
+            try
+            {
+                var element = XElement.Parse(linkRawValue);
+
+                // Add or update the "text" attribute
+                element.SetAttributeValue("text", linkText ?? string.Empty);
+
+                return element.ToString(SaveOptions.DisableFormatting);
+            }
+            catch
+            {
+                // If parsing fails, return the original raw value
+                return linkRawValue;
+            }
         }
 
     }

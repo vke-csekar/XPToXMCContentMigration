@@ -30,7 +30,9 @@ namespace CWXPMigration
             List<string> fieldNames,
             Func<JObject, T> itemMapper,
             List<string> excludeTemplateIDs = null,
-            List<string> includeTemplateIDs = null);        
+            List<string> includeTemplateIDs = null);
+
+        Task<XMCBlogPage> QueryBlogSingleItemAsync(string environment, string accessToken, string path);
     }
 
     public class SitecoreGraphQLClient : ISitecoreGraphQLClient
@@ -204,7 +206,58 @@ namespace CWXPMigration
                 {
                     ItemId = item.Value<string>("itemId"),
                     Path = item.Value<string>("path"),
-                    Name = item.Value<string>("itemName")
+                    Name = item.Value<string>("itemName"),
+                    TemplateId = item["template"]?.Value<string>("templateId")
+                };
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine("Error querying single item: " + ex.Message);
+                return null;
+            }
+        }
+
+
+        public async Task<XMCBlogPage> QueryBlogSingleItemAsync(string environment, string accessToken, string path)
+        {
+            var query = SitecoreQueryBuilder.GetItemQueryByPath(path, new List<string>() { "content" });            
+
+            var jsonContent = new StringContent(
+                Newtonsoft.Json.JsonConvert.SerializeObject(query),
+                Encoding.UTF8,
+                "application/json");
+
+            try
+            {
+                _httpClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
+                _httpClient.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
+                var response = await _httpClient.PostAsync(getEndpoint(environment), jsonContent);
+
+                if (!response.IsSuccessStatusCode)
+                {
+                    var errMsg = await response.Content.ReadAsStringAsync();
+                    throw new Exception($"GraphQL query failed: {response.StatusCode} - {errMsg}");
+                }
+
+                var responseString = await response.Content.ReadAsStringAsync();
+                var json = JObject.Parse(responseString);                
+
+                if (json["errors"] != null)
+                {
+                    Console.WriteLine("GraphQL Errors: " + json["errors"]);
+                    return null;
+                }
+
+                var item = json["data"]?["item"];
+                if (item == null)
+                    return null;
+
+                return new XMCBlogPage
+                {
+                    ItemId = item.Value<string>("itemId"),
+                    Path = item.Value<string>("path"),
+                    ItemName = item.Value<string>("itemName"),
+                    Content = item["content"]?.Value<string>("value")
                 };
             }
             catch (Exception ex)
@@ -244,7 +297,7 @@ namespace CWXPMigration
                         endCursor,
                         excludeTemplateIDs,
                         includeTemplateIDs
-                    );
+                    );                    
 
                     var jsonContent = new StringContent(
                         Newtonsoft.Json.JsonConvert.SerializeObject(query),
@@ -264,7 +317,7 @@ namespace CWXPMigration
                     }
 
                     var responseString = await response.Content.ReadAsStringAsync();
-                    var json = JObject.Parse(responseString);
+                    var json = JObject.Parse(responseString);                    
 
                     if (json["errors"] != null)
                     {

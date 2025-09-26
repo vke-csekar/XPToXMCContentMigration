@@ -11,6 +11,6 @@ namespace CWXPMigration.Services
         public BaseMigrationService(ISitecoreGraphQLClient sitecoreGraphQLClient)
         {
             this.SitecoreGraphQLClient = sitecoreGraphQLClient;
-        }                    
+        }             
     }
 }

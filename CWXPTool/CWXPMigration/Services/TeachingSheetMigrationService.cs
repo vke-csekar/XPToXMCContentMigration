@@ -28,6 +28,16 @@ namespace CWXPMigration.Services
             string environment,
             string accessToken,
             string generalHeaderItemId);
+
+        Task PatchAsync(
+            string language,
+            IEnumerable<RenderingInfo> xpRteRenderings,
+            PageDataModel sourcePageItem,
+            string dataItemId,
+            string newUrlPath,
+            string environment,
+            string accessToken,
+            string generalHeaderItemId);
         Task<string> GetOrCreateGeneralHeaderItemAsync(string newUrlPath, string dataItemId, string environment, string accessToken);
     }
 
@@ -42,6 +52,108 @@ namespace CWXPMigration.Services
         }
 
         /// <inheritdoc />
+        public async Task PatchAsync(
+            string language,
+            IEnumerable<RenderingInfo> xpRteRenderings,
+            PageDataModel sourcePageItem,
+            string dataItemId,
+            string newUrlPath,
+            string environment,
+            string accessToken,
+            string generalHeaderItemId)
+        {
+            _environment = environment;
+            _accessToken = accessToken;
+
+            await CreateInPageBannerDatasources(language, newUrlPath, dataItemId, sourcePageItem);                       
+
+            if (string.IsNullOrEmpty(generalHeaderItemId)) return;
+
+            foreach (var xpRteRendering in xpRteRenderings)
+            {
+                var xpRteDatasource = SitecoreUtility.GetDatasource(sourcePageItem, xpRteRendering.DatasourceID);
+
+                if (xpRteDatasource != null)
+                {
+                    var datasourceId = xpRteDatasource.ID;
+                    var xpRteField = SitecoreUtility.GetRichTextField(xpRteDatasource);
+                    if (xpRteField != null)
+                    {
+                        var path = $"{newUrlPath}/Data/{xpRteDatasource.Name}";                        
+                        if (!language.Equals("en", StringComparison.OrdinalIgnoreCase))
+                        {
+                            Sitecore.Diagnostics.Log.Info($"Language: {language}", this);
+                            //Spanish                                
+                            var rteLangItem = SitecoreUtility.GetItemByLanguage(datasourceId, language, Sitecore.Context.Database);
+                            if (rteLangItem != null)
+                            {
+                                Sitecore.Diagnostics.Log.Info($"${rteLangItem.Name}|Language: {language}", this);
+                                var xpLangRteField = SitecoreUtility.GetRichTextField(rteLangItem);
+                                if (xpLangRteField != null)
+                                {
+                                    Sitecore.Diagnostics.Log.Info($"${xpLangRteField.Name}|Language: {language}", this);
+                                    var spanishContents = RichTextSplitter.SplitByH2(xpLangRteField.Value, language);
+                                    if (spanishContents != null && spanishContents.Any())
+                                    {
+                                        Sitecore.Diagnostics.Log.Info($"{JsonConvert.SerializeObject(spanishContents)}", this);                                        
+                                        var finalHtml = RichTextSplitter.AddIdAttributeToAllH2(xpLangRteField.Value);
+                                        if (!string.IsNullOrEmpty(finalHtml))
+                                        {
+                                            Sitecore.Diagnostics.Log.Info($"{finalHtml}", this);
+                                            var xmcRteDatasource = await this.SitecoreGraphQLClient.QuerySingleItemAsync(_environment, _accessToken, path);
+                                            if (xmcRteDatasource != null)
+                                            {
+                                                Sitecore.Diagnostics.Log.Info($"{xmcRteDatasource.ItemId}", this);
+                                                var updateItem = new SitecoreUpdateItemInput
+                                                {
+                                                    ItemId = xmcRteDatasource.ItemId,
+                                                    Fields = new List<SitecoreFieldInput>()
+                                                {
+                                                    new SitecoreFieldInput()
+                                                    {
+                                                        Name = "text",
+                                                        Value = finalHtml
+                                                    }
+                                                },
+                                                    Language = language,
+                                                };
+
+                                                await this.SitecoreGraphQLClient.UpdateBulkItemsBatchedAsync(
+                                                    new List<SitecoreUpdateItemInput> { updateItem }, _environment, _accessToken);
+                                            }
+                                        }
+                                    }
+
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            var fields = new List<SitecoreFieldInput>();            
+
+            var titleField = GetEnglishTitle(sourcePageItem);                        
+
+            if(!language.Equals("en", StringComparison.OrdinalIgnoreCase))
+            {
+                var spanishTitleField = await CreateSpanishPublicationInfoDatasources(language, newUrlPath, dataItemId, generalHeaderItemId, sourcePageItem, titleField);
+                if (spanishTitleField != null)
+                {                    
+                    fields.Add(spanishTitleField);
+                }
+                var updateItem = new SitecoreUpdateItemInput
+                {
+                    ItemId = generalHeaderItemId,
+                    Fields = fields,
+                    Language = language,
+                };
+
+                await this.SitecoreGraphQLClient.UpdateBulkItemsBatchedAsync(
+                    new List<SitecoreUpdateItemInput> { updateItem }, _environment, _accessToken);                
+            }                      
+        }
+
         public async Task ProcessAsync(
             string language,
             IEnumerable<RenderingInfo> xpRteRenderings,
@@ -57,7 +169,7 @@ namespace CWXPMigration.Services
 
             await CreateInPageBannerDatasources(language, newUrlPath, dataItemId, sourcePageItem);
 
-            List<RichTextSection> jumpLinkSections = new List<RichTextSection>();            
+            List<RichTextSection> jumpLinkSections = new List<RichTextSection>();
 
             foreach (var xpRteRendering in xpRteRenderings)
             {
@@ -99,7 +211,7 @@ namespace CWXPMigration.Services
                                 {
                                     Sitecore.Diagnostics.Log.Info($"${xpLangRteField.Name}|Language: {language}", this);
                                     var spanishContents = RichTextSplitter.SplitByH2(xpLangRteField.Value, language);
-                                    if(spanishContents != null && spanishContents.Any())
+                                    if (spanishContents != null && spanishContents.Any())
                                     {
                                         Sitecore.Diagnostics.Log.Info($"{JsonConvert.SerializeObject(spanishContents)}", this);
                                         jumpLinkSections.AddRange(spanishContents);
@@ -130,7 +242,7 @@ namespace CWXPMigration.Services
                                             }
                                         }
                                     }
-                                    
+
                                 }
                             }
                         }
@@ -164,17 +276,19 @@ namespace CWXPMigration.Services
                         });
                     }
                 }
-                if(!language.Equals("en", StringComparison.OrdinalIgnoreCase))
+                if (!language.Equals("en", StringComparison.OrdinalIgnoreCase))
                 {
-                    if(jumpLinkSections != null)
+                    if (jumpLinkSections != null)
                     {
-                        var jumpLinkSpanishSections = jumpLinkSections.Where(x => x.Language.Equals(language, StringComparison.OrdinalIgnoreCase))?.ToList();
+                        var jumpLinkSpanishSections = jumpLinkSections.Where(x => !string.IsNullOrEmpty(x.Title) && x.Language.Equals(language, StringComparison.OrdinalIgnoreCase))?.ToList();
                         if (jumpLinkSpanishSections != null)
                         {
                             var path = $"{newUrlPath}/Data/General Header";
                             for (int i = 0; i < jumpLinkSpanishSections.Count(); i++)
                             {
                                 var jumpLinkEnglishSection = jumpLinkEnglishSections?[i];
+                                if (jumpLinkEnglishSection == null)
+                                    continue;
                                 var linkItemName = PathFormatter.FormatItemName(jumpLinkEnglishSection.Title);
                                 Sitecore.Diagnostics.Log.Info($"linkItemName:{linkItemName}", this);
                                 var link = BuildAnchorLink(jumpLinkSpanishSections[i].Title, i);
@@ -199,11 +313,11 @@ namespace CWXPMigration.Services
                                     };
 
                                     await this.SitecoreGraphQLClient.UpdateBulkItemsBatchedAsync(
-                                        new List<SitecoreUpdateItemInput> { updateItem }, _environment, _accessToken);                                    
+                                        new List<SitecoreUpdateItemInput> { updateItem }, _environment, _accessToken);
                                 }
                             }
                         }
-                    }                    
+                    }
                 }
             }
 
@@ -215,9 +329,9 @@ namespace CWXPMigration.Services
 
             await UpdateGeneralHeaderAsync(generalHeaderItemId, fields);
 
-            if(!language.Equals("en", StringComparison.OrdinalIgnoreCase))
+            if (!language.Equals("en", StringComparison.OrdinalIgnoreCase))
             {
-                var spanishTitleField = await CreateSpanishPublicationInfoDatasources(language, newUrlPath, dataItemId, generalHeaderItemId, sourcePageItem);
+                var spanishTitleField = await CreateSpanishPublicationInfoDatasources(language, newUrlPath, dataItemId, generalHeaderItemId, sourcePageItem, titleField.Value?.ToString() ?? string.Empty);
                 if (spanishTitleField != null)
                 {
                     fields.RemoveAll(x => x.Name.Equals("title", StringComparison.OrdinalIgnoreCase));
@@ -231,8 +345,8 @@ namespace CWXPMigration.Services
                 };
 
                 await this.SitecoreGraphQLClient.UpdateBulkItemsBatchedAsync(
-                    new List<SitecoreUpdateItemInput> { updateItem }, _environment, _accessToken);                
-            }                       
+                    new List<SitecoreUpdateItemInput> { updateItem }, _environment, _accessToken);
+            }
         }
 
         #region Private Helpers
@@ -399,8 +513,7 @@ namespace CWXPMigration.Services
                         await this.SitecoreGraphQLClient.CreateBulkItemsBatchedAsync(
                             new List<SitecoreCreateItemInput> { inputItem }, _environment, _accessToken);
                     }
-                    xmcDatasource = await this.SitecoreGraphQLClient.QuerySingleItemAsync(_environment, _accessToken, path);
-                    if (xmcDatasource != null)
+                    else
                     {
                         //Spanish
                         var datasourceId = xpDatasource.ID;
@@ -412,7 +525,11 @@ namespace CWXPMigration.Services
                                 var fields = new List<SitecoreFieldInput>();
                                 var heading = SitecoreUtility.GetSitecoreFieldInput(bannerItem, "Heading", "heading");
                                 if (heading != null)
+                                {
+                                    if (heading.Value.Equals("Alert"))
+                                        heading.Value = "ALERTA";
                                     fields.Add(heading);
+                                }
                                 var bodyText = SitecoreUtility.GetSitecoreFieldInput(bannerItem, "Description", "bodyText");
                                 if (bodyText != null)
                                     fields.Add(bodyText);
@@ -421,7 +538,7 @@ namespace CWXPMigration.Services
                                 {
                                     ItemId = xmcDatasource.ItemId,
                                     Fields = fields,
-                                    Language = bannerItem.Language.Name,
+                                    Language = language,
                                 };
 
                                 await this.SitecoreGraphQLClient.UpdateBulkItemsBatchedAsync(
@@ -431,7 +548,24 @@ namespace CWXPMigration.Services
                     }
                 }
             }
-        }        
+        }
+
+        private string GetEnglishTitle(PageDataModel sourcePageItem)
+        {
+            var xpRendering = sourcePageItem.Renderings.FirstOrDefault(x => x.RenderingName.Contains(XP_RenderingName_Constants.Publication_Content));
+
+            if (xpRendering != null)
+            {
+                var xpDatasource = SitecoreUtility.GetDatasource(sourcePageItem, xpRendering.DatasourceID);
+
+                if (xpDatasource != null)
+                {                   
+                    var headline = xpDatasource.Fields?.FirstOrDefault(x => x.Name.Equals("Headline"))?.Value ?? string.Empty;                    
+                    return headline;
+                }
+            }
+            return string.Empty;
+        }
 
         private async Task<SitecoreFieldInput> CreatePublicationInfoDatasources(string newUrlPath, string dataItemId, string generalHeaderItemId,
             PageDataModel sourcePageItem)
@@ -491,7 +625,7 @@ namespace CWXPMigration.Services
         }
 
         private async Task<SitecoreFieldInput> CreateSpanishPublicationInfoDatasources(string language, string newUrlPath, string dataItemId, string generalHeaderItemId,
-            PageDataModel sourcePageItem)
+            PageDataModel sourcePageItem, string englishTitle)
         {
             var xpRendering = sourcePageItem.Renderings.FirstOrDefault(x => x.RenderingName.Contains(XP_RenderingName_Constants.Publication_Content));
 
@@ -537,7 +671,7 @@ namespace CWXPMigration.Services
 
                             var headline = publicationInfoItem.Fields?.FirstOrDefault(x => x.Name.Equals("Headline"))?.Value ?? string.Empty;
                             var draftNumber = publicationInfoItem.Fields?.FirstOrDefault(x => x.Name.Equals("DraftNumber"))?.Value ?? string.Empty;
-                            var title = $"{headline} ({draftNumber})";
+                            var title = $"{headline} ({englishTitle}) ({draftNumber})";
 
                             return new SitecoreFieldInput
                             {
