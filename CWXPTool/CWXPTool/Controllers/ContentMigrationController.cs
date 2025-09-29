@@ -138,12 +138,11 @@ namespace CWXPTool.Controllers
                 {
                     Sitecore.Diagnostics.Log.Info($"rootItem: {rootItem.ID.ToString()}", this);
                     var items = rootItem.Axes.GetDescendants()
-                            .Where(descendant => syncDatasources ? true : 
-                            descendant.TemplateID.ToString().Equals("{1F627E91-79F2-4CE5-A18A-BF33972B2072}") ||
+                            .Where(descendant => syncDatasources ? true :                             
                             descendant.TemplateID.ToString().Equals(XP_Page_Template_Constants.XP_CHWF_BASE_PAGE_TEMPLATEID) ||
                             descendant.Template.BaseTemplates.Any(t => t.ID.ToString() == XP_Page_Template_Constants.XP_BASE_PAGE_TEMPLATEID))
                             .ToList();
-                    if(rootItem.TemplateID.ToString().Equals("{1F627E91-79F2-4CE5-A18A-BF33972B2072}") ||  rootItem.TemplateID.ToString().Equals(XP_Page_Template_Constants.XP_CHWF_BASE_PAGE_TEMPLATEID) ||
+                    if(rootItem.TemplateID.ToString().Equals(XP_Page_Template_Constants.XP_CHWF_BASE_PAGE_TEMPLATEID) ||
                         rootItem.Template.BaseTemplates.Any(t => t.ID.ToString() == XP_Page_Template_Constants.XP_BASE_PAGE_TEMPLATEID))
                     {
                         items.Insert(0, rootItem); // include root item itself
@@ -155,7 +154,7 @@ namespace CWXPTool.Controllers
                     {
                         Sitecore.Diagnostics.Log.Info($"syncDatasources: {syncDatasources}", this);
                         if(datasourceType.Equals("Blogs"))
-                            await SyncBlogDataV2();
+                            await SyncBlogData();
                         else if (datasourceType.Equals("Providers"))
                         {
                             await SyncProviderData(items);
@@ -170,30 +169,30 @@ namespace CWXPTool.Controllers
                     model.Items = SitecoreUtility.GetPagesAndRelatedDataFromXP(items, database);
                     if (model.Items != null && model.Items.Any())
                     {
-                        await SyncBlogRTELinksData(model.Items);
-                        //if (pageMappingItems != null && pageMappingItems.Any())
-                        //{
-                        //    if (!string.IsNullOrEmpty(xmcItemPath) && mappingSelections != null && mappingSelections.Any())
-                        //    {
-                        //        Sitecore.Diagnostics.Log.Info("Processing mapping selections", this);
-                        //        foreach (var item in model.Items)
-                        //        {
-                        //            var mappingSelection = mappingSelections.FirstOrDefault(x => item.TemplateID.Equals(ID.Parse(x.TemplateId)));
-                        //            if (mappingSelection != null)
-                        //            {
-                        //                Sitecore.Diagnostics.Log.Info($"Mapping found for {item.Page}/{mappingSelection.XMTemplateId}", this);
-                        //                //string itemRelativePath = item.Page.Replace(itemPath, "");                                        
-                        //                pageMappingItems.Add(new PageMapping()
-                        //                {
-                        //                    CURRENTURL = item.Page,
-                        //                    NEWURLPATH = item.Page.Replace(itemPath, xmcItemPath),
-                        //                    PAGETEMPLATEID = mappingSelection.XMTemplateId
-                        //                });
-                        //            }
-                        //        }
-                        //    }
-                        //    syncResults = await SyncPagesInBatches(language, model.Items, pageMappingItems, mappingSelections, createPages, syncComponents);
-                        //}
+                        //await SyncBlogRTELinksData(model.Items);
+                        if (pageMappingItems != null && pageMappingItems.Any())
+                        {
+                            if (!string.IsNullOrEmpty(xmcItemPath) && mappingSelections != null && mappingSelections.Any())
+                            {
+                                Sitecore.Diagnostics.Log.Info("Processing mapping selections", this);
+                                foreach (var item in model.Items)
+                                {
+                                    var mappingSelection = mappingSelections.FirstOrDefault(x => item.TemplateID.Equals(ID.Parse(x.TemplateId)));
+                                    if (mappingSelection != null)
+                                    {
+                                        Sitecore.Diagnostics.Log.Info($"Mapping found for {item.Page}/{mappingSelection.XMTemplateId}", this);
+                                        //string itemRelativePath = item.Page.Replace(itemPath, "");                                        
+                                        pageMappingItems.Add(new PageMapping()
+                                        {
+                                            CURRENTURL = item.Page,
+                                            NEWURLPATH = item.Page.Replace(itemPath, xmcItemPath),
+                                            PAGETEMPLATEID = mappingSelection.XMTemplateId
+                                        });
+                                    }
+                                }
+                            }
+                            syncResults = await SyncPagesInBatches(language, model.Items, pageMappingItems, mappingSelections, createPages, syncComponents);
+                        }
                     }
                 }
             }
