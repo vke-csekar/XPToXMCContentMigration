@@ -16,3 +16,40 @@
 /CWXPTool/CWXPTool/bin
 /CWXPTool/CWXPTool/obj/Debug
 /CWXPTool/packages
+.vs/
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+
+# Build results
+bin/
+obj/
+Debug/
+Release/
+
+# ==============================
+# Exclude all DLLs
+# ==============================
+*.dll
+*.pdb
+
+# ==============================
+# NuGet packages
+# ==============================
+*.nupkg
+packages/
+
+# ==============================
+# Rider / ReSharper / JetBrains
+# ==============================
+.idea/
+*.ReSharper.*
+*.DotSettings.user
+
+# ==============================
+# Others
+# ==============================
+TestResults/
+*.log
+*.cache
